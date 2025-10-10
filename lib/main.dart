@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -94,9 +95,11 @@ class FocusScreen extends StatefulWidget {
 class _FocusScreenState extends State<FocusScreen>
     with TickerProviderStateMixin {
   Timer? _timer;
-  final int _totalSeconds = 20 * 60; // 20 minutes default
+  int _selectedMinutes = 20; // Default 20 minutes
+  int _totalSeconds = 20 * 60;
   int _remainingSeconds = 20 * 60;
   bool _isRunning = false;
+  bool _isPickerVisible = false;
   late AnimationController _pulseController;
 
   @override
@@ -145,6 +148,73 @@ class _FocusScreenState extends State<FocusScreen>
     });
   }
 
+  void _togglePicker() {
+    if (!_isRunning) {
+      setState(() {
+        _isPickerVisible = !_isPickerVisible;
+      });
+    }
+  }
+
+  void _onPickerChanged(int minutes) {
+    setState(() {
+      _selectedMinutes = minutes;
+      _totalSeconds = _selectedMinutes * 60;
+      _remainingSeconds = _totalSeconds;
+    });
+  }
+
+  Widget _buildTimePicker() {
+    // Generate list of minutes in 5-minute increments (5, 10, 15, ..., 120)
+    final List<int> minuteOptions = List.generate(24, (index) => (index + 1) * 5);
+    int selectedIndex = minuteOptions.indexOf(_selectedMinutes);
+    if (selectedIndex == -1) selectedIndex = 3; // Default to 20 minutes (index 3)
+
+    return GestureDetector(
+      onTap: _togglePicker,
+      child: SizedBox(
+        height: 150, // 3 items with proper spacing
+        child: CupertinoPicker(
+          itemExtent: 50, // Height of each item
+          scrollController: FixedExtentScrollController(
+            initialItem: selectedIndex,
+          ),
+          selectionOverlay: GestureDetector(
+            onTap: _togglePicker,
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.symmetric(
+                  horizontal: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          onSelectedItemChanged: (int index) {
+            _onPickerChanged(minuteOptions[index]);
+          },
+          children: minuteOptions.map((minutes) {
+            return GestureDetector(
+              onTap: _togglePicker,
+              child: Center(
+                child: Text(
+                  '${minutes.toString().padLeft(2, '0')}:00',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     double progress = _totalSeconds > 0
@@ -183,157 +253,135 @@ class _FocusScreenState extends State<FocusScreen>
 
             // Main Timer Area
             Expanded(
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Circular Timer
-                      Column(
-                        children: [
-                          Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              // Progress Circle
-                              SizedBox(
-                                width: 240,
-                                height: 240,
-                                child: CustomPaint(
-                                  painter: CircularProgressPainter(
-                                    progress: progress,
-                                    isRunning: _isRunning,
-                                  ),
-                                ),
-                              ),
-
-                              // Center content - Earth image
-                              Container(
-                                width: 120,
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  image: const DecorationImage(
-                                    image: AssetImage('assets/images/earth.png'),
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 30),
-
-                          // Info section below circle
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 40.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: GestureDetector(
+                onTap: () {
+                  if (_isPickerVisible && !_isRunning) {
+                    _togglePicker();
+                  }
+                },
+                behavior: HitTestBehavior.translucent,
+                child: Column(
+                  children: [
+                    // Timer content - takes available space
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Stack(
+                              alignment: Alignment.center,
                               children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${(_remainingSeconds ~/ 3600).toString().padLeft(2, '0')}h ${((_remainingSeconds % 3600) ~/ 60).toString().padLeft(2, '0')}m',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                // Progress Circle
+                                SizedBox(
+                                  width: 240,
+                                  height: 240,
+                                  child: CustomPaint(
+                                    painter: CircularProgressPainter(
+                                      progress: progress,
+                                      isRunning: _isRunning,
                                     ),
-                                    const SizedBox(height: 4),
-                                    const Text(
-                                      'left',
-                                      style: TextStyle(
-                                        color: Color(0xFF666666),
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '${(((_totalSeconds - _remainingSeconds) / _totalSeconds) * 100).toInt()}%',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
+
+                                // Center content - Earth image
+                                Container(
+                                  width: 120,
+                                  height: 120,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    image: const DecorationImage(
+                                      image: AssetImage(
+                                        'assets/images/earth.png',
                                       ),
+                                      fit: BoxFit.cover,
                                     ),
-                                    const SizedBox(height: 4),
-                                    const Text(
-                                      'completed',
-                                      style: TextStyle(
-                                        color: Color(0xFF666666),
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ],
                             ),
+
+                            const SizedBox(height: 30),
+
+                            // Timer display or picker - inline toggle with fixed height
+                            GestureDetector(
+                              onTap: _togglePicker,
+                              child: SizedBox(
+                                height: 150,
+                                child: _isPickerVisible && !_isRunning
+                                    ? _buildTimePicker()
+                                    : Center(
+                                        child: Text(
+                                          '${(_remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_remainingSeconds % 60).toString().padLeft(2, '0')}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 32,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Control buttons - fixed at bottom with 20px spacing
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 20.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Pause/Play button (smaller, square with rounded corners)
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFFFFF),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: IconButton(
+                              icon: Icon(
+                                _isRunning ? Icons.pause : Icons.play_arrow,
+                                size: 32,
+                              ),
+                              color: const Color(0xFF000000),
+                              onPressed: () {
+                                if (_isRunning) {
+                                  _pauseTimer();
+                                } else {
+                                  _startTimer();
+                                }
+                              },
+                            ),
                           ),
 
-                          const SizedBox(height: 30),
+                          const SizedBox(width: 16),
 
-                          // Control buttons
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // Pause/Play button (smaller, square with rounded corners)
-                              Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFFFFF),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: IconButton(
-                                  icon: Icon(
-                                    _isRunning ? Icons.pause : Icons.play_arrow,
-                                    size: 32,
-                                  ),
-                                  color: const Color(0xFF000000),
-                                  onPressed: () {
-                                    if (_isRunning) {
-                                      _pauseTimer();
-                                    } else {
-                                      _startTimer();
-                                    }
-                                  },
+                          // Stop button (pill-shaped)
+                          Container(
+                            height: 60,
+                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2A2A2A),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: TextButton(
+                              onPressed: _stopTimer,
+                              child: const Text(
+                                'Stop focusing',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
-
-                              const SizedBox(width: 16),
-
-                              // Stop button (pill-shaped)
-                              Container(
-                                height: 60,
-                                padding: const EdgeInsets.symmetric(horizontal: 32),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF2A2A2A),
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                                child: TextButton(
-                                  onPressed: _stopTimer,
-                                  child: const Text(
-                                    'Stop focusing',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
