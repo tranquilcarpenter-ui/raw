@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:palette_generator/palette_generator.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -32,7 +33,8 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateMixin {
+class _MainScreenState extends State<MainScreen>
+    with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
   AnimationController? _navBarController;
   Animation<double>? _navBarAnimation;
@@ -93,42 +95,48 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   ),
                 );
               },
-        child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.white.withValues(alpha: 0.1),
-              blurRadius: 10,
-              offset: const Offset(0, -3),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A1A),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, -3),
+                    ),
+                  ],
+                ),
+                child: BottomNavigationBar(
+                  currentIndex: _currentIndex,
+                  onTap: (index) {
+                    setState(() {
+                      _currentIndex = index;
+                    });
+                  },
+                  backgroundColor: Colors.transparent,
+                  selectedItemColor: const Color(0xFFFFFFFF),
+                  unselectedItemColor: const Color(0xFF666666),
+                  elevation: 0,
+                  type: BottomNavigationBarType.fixed,
+                  selectedFontSize: 12,
+                  unselectedFontSize: 12,
+                  items: const [
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.adjust),
+                      label: 'Focus',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.people),
+                      label: 'Community',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.person),
+                      label: 'Profile',
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
-          backgroundColor: Colors.transparent,
-          selectedItemColor: const Color(0xFFFFFFFF),
-          unselectedItemColor: const Color(0xFF666666),
-          elevation: 0,
-          type: BottomNavigationBarType.fixed,
-          selectedFontSize: 12,
-          unselectedFontSize: 12,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.adjust), label: 'Focus'),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.people),
-              label: 'Community',
-            ),
-            BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-          ],
-        ),
-        ),
-      ),
     );
   }
 }
@@ -155,6 +163,9 @@ class _FocusScreenState extends State<FocusScreen>
   late AnimationController _timerScaleController;
   late Animation<double> _timerScaleAnimation;
 
+  // Color extraction
+  List<Color> _paletteColors = [];
+
   @override
   void initState() {
     super.initState();
@@ -169,6 +180,31 @@ class _FocusScreenState extends State<FocusScreen>
     _timerScaleAnimation = Tween<double>(begin: 1.0, end: 1.5).animate(
       CurvedAnimation(parent: _timerScaleController, curve: Curves.easeInOut),
     );
+    _extractImageColors();
+  }
+
+  Future<void> _extractImageColors() async {
+    final PaletteGenerator paletteGenerator =
+        await PaletteGenerator.fromImageProvider(
+          const AssetImage('assets/images/purple.png'),
+          maximumColorCount: 20,
+        );
+
+    setState(() {
+      // Collect multiple colors for gradient
+      _paletteColors = [
+        paletteGenerator.vibrantColor?.color,
+        paletteGenerator.lightVibrantColor?.color,
+        paletteGenerator.darkVibrantColor?.color,
+        paletteGenerator.mutedColor?.color,
+        paletteGenerator.lightMutedColor?.color,
+      ].whereType<Color>().toList();
+
+      // Fallback colors if extraction fails
+      if (_paletteColors.isEmpty) {
+        _paletteColors = [const Color(0xFF4A90E2), const Color(0xFF50C878)];
+      }
+    });
   }
 
   @override
@@ -233,9 +269,13 @@ class _FocusScreenState extends State<FocusScreen>
 
   Widget _buildTimePicker() {
     // Generate list of minutes in 5-minute increments (5, 10, 15, ..., 120)
-    final List<int> minuteOptions = List.generate(24, (index) => (index + 1) * 5);
+    final List<int> minuteOptions = List.generate(
+      24,
+      (index) => (index + 1) * 5,
+    );
     int selectedIndex = minuteOptions.indexOf(_selectedMinutes);
-    if (selectedIndex == -1) selectedIndex = 3; // Default to 20 minutes (index 3)
+    if (selectedIndex == -1)
+      selectedIndex = 3; // Default to 20 minutes (index 3)
 
     return GestureDetector(
       onTap: _togglePicker,
@@ -350,15 +390,79 @@ class _FocusScreenState extends State<FocusScreen>
                                   ),
                                 ),
 
-                                // Center content - Earth image
+                                // Radial gradient background behind earth with soft edges
+                                if (_paletteColors.isNotEmpty)
+                                  Container(
+                                    width: 240,
+                                    height: 240,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: RadialGradient(
+                                        colors: [
+                                          _paletteColors.first.withValues(
+                                            alpha: 0.9,
+                                          ),
+                                          _paletteColors.length > 1
+                                              ? _paletteColors[1].withValues(
+                                                  alpha: 0.7,
+                                                )
+                                              : _paletteColors.first.withValues(
+                                                  alpha: 0.7,
+                                                ),
+                                          _paletteColors.length > 2
+                                              ? _paletteColors[2].withValues(
+                                                  alpha: 0.5,
+                                                )
+                                              : _paletteColors.last.withValues(
+                                                  alpha: 0.5,
+                                                ),
+                                          _paletteColors.last.withValues(
+                                            alpha: 0.25,
+                                          ),
+                                          _paletteColors.last.withValues(
+                                            alpha: 0.1,
+                                          ),
+                                          Colors.transparent,
+                                        ],
+                                        stops: const [
+                                          0.0,
+                                          0.25,
+                                          0.45,
+                                          0.65,
+                                          0.85,
+                                          1.0,
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+
+                                // Center content - Earth image with sophisticated shadow
                                 Container(
                                   width: 120,
                                   height: 120,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.4,
+                                        ),
+                                        blurRadius: 30,
+                                        spreadRadius: 5,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        blurRadius: 60,
+                                        spreadRadius: 10,
+                                        offset: const Offset(0, 20),
+                                      ),
+                                    ],
                                     image: const DecorationImage(
                                       image: AssetImage(
-                                        'assets/images/earth.png',
+                                        'assets/images/purple.png',
                                       ),
                                       fit: BoxFit.cover,
                                     ),
@@ -480,21 +584,7 @@ class CircularProgressPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
 
-    // Background circles
-    final bgPaint1 = Paint()
-      ..color = const Color(0xFF1A1A1A)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    final bgPaint2 = Paint()
-      ..color = const Color(0xFF333333)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    canvas.drawCircle(center, radius - 10, bgPaint1);
-    canvas.drawCircle(center, radius - 25, bgPaint2);
-
-    // Progress arc
+    // Progress arc only - no background strokes
     final progressPaint = Paint()
       ..shader = const SweepGradient(
         startAngle: -math.pi / 2,
