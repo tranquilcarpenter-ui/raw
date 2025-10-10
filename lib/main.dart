@@ -32,20 +32,68 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
+  AnimationController? _navBarController;
+  Animation<double>? _navBarAnimation;
 
-  final List<Widget> _screens = [
-    const FocusScreen(),
-    const CommunityScreen(),
-    const ProfileScreen(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _navBarController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _navBarAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _navBarController!, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _navBarController?.dispose();
+    super.dispose();
+  }
+
+  void _onFocusStateChanged(bool isRunning) {
+    if (isRunning) {
+      _navBarController?.forward();
+    } else {
+      _navBarController?.reverse();
+    }
+  }
+
+  Widget get _currentScreen {
+    switch (_currentIndex) {
+      case 0:
+        return FocusScreen(onFocusStateChanged: _onFocusStateChanged);
+      case 1:
+        return const CommunityScreen();
+      case 2:
+        return const ProfileScreen();
+      default:
+        return FocusScreen(onFocusStateChanged: _onFocusStateChanged);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: Container(
+      body: _currentScreen,
+      bottomNavigationBar: _navBarAnimation == null
+          ? null
+          : AnimatedBuilder(
+              animation: _navBarAnimation!,
+              builder: (context, child) {
+                return Transform.translate(
+                  offset: Offset(0, 80 * _navBarAnimation!.value),
+                  child: Opacity(
+                    opacity: 1 - _navBarAnimation!.value,
+                    child: child,
+                  ),
+                );
+              },
+        child: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF1A1A1A),
           boxShadow: [
@@ -79,6 +127,7 @@ class _MainScreenState extends State<MainScreen> {
             BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
           ],
         ),
+        ),
       ),
     );
   }
@@ -86,7 +135,9 @@ class _MainScreenState extends State<MainScreen> {
 
 // Focus Screen with Timer
 class FocusScreen extends StatefulWidget {
-  const FocusScreen({super.key});
+  final Function(bool)? onFocusStateChanged;
+
+  const FocusScreen({super.key, this.onFocusStateChanged});
 
   @override
   State<FocusScreen> createState() => _FocusScreenState();
@@ -101,6 +152,8 @@ class _FocusScreenState extends State<FocusScreen>
   bool _isRunning = false;
   bool _isPickerVisible = false;
   late AnimationController _pulseController;
+  late AnimationController _timerScaleController;
+  late Animation<double> _timerScaleAnimation;
 
   @override
   void initState() {
@@ -109,12 +162,20 @@ class _FocusScreenState extends State<FocusScreen>
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
+    _timerScaleController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _timerScaleAnimation = Tween<double>(begin: 1.0, end: 1.5).animate(
+      CurvedAnimation(parent: _timerScaleController, curve: Curves.easeInOut),
+    );
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _pulseController.dispose();
+    _timerScaleController.dispose();
     super.dispose();
   }
 
@@ -122,6 +183,8 @@ class _FocusScreenState extends State<FocusScreen>
     setState(() {
       _isRunning = true;
     });
+    _timerScaleController.forward();
+    widget.onFocusStateChanged?.call(true);
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         if (_remainingSeconds > 0) {
@@ -138,6 +201,8 @@ class _FocusScreenState extends State<FocusScreen>
     setState(() {
       _isRunning = false;
     });
+    _timerScaleController.reverse();
+    widget.onFocusStateChanged?.call(false);
   }
 
   void _stopTimer() {
@@ -146,6 +211,8 @@ class _FocusScreenState extends State<FocusScreen>
       _isRunning = false;
       _remainingSeconds = _totalSeconds;
     });
+    _timerScaleController.reverse();
+    widget.onFocusStateChanged?.call(false);
   }
 
   void _togglePicker() {
@@ -309,13 +376,22 @@ class _FocusScreenState extends State<FocusScreen>
                                 height: 150,
                                 child: _isPickerVisible && !_isRunning
                                     ? _buildTimePicker()
-                                    : Center(
-                                        child: Text(
-                                          '${(_remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_remainingSeconds % 60).toString().padLeft(2, '0')}',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 32,
-                                            fontWeight: FontWeight.w600,
+                                    : AnimatedBuilder(
+                                        animation: _timerScaleAnimation,
+                                        builder: (context, child) {
+                                          return Transform.scale(
+                                            scale: _timerScaleAnimation.value,
+                                            child: child,
+                                          );
+                                        },
+                                        child: Center(
+                                          child: Text(
+                                            '${(_remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_remainingSeconds % 60).toString().padLeft(2, '0')}',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 32,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
                                         ),
                                       ),
