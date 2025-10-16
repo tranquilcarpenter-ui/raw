@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -14,12 +15,12 @@ class FocusFlowApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'FocusFlow',
+      title: 'RAW',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFF000000),
         primaryColor: const Color(0xFFFFFFFF),
-        fontFamily: 'Roboto',
+        fontFamily: 'Inter',
       ),
       home: const MainScreen(),
     );
@@ -65,6 +66,75 @@ class _MainScreenState extends State<MainScreen>
     }
   }
 
+  Widget _buildNavItem(
+    String iconPath,
+    int index,
+    String label, {
+    bool useMaterialIcon = false,
+    IconData? materialIcon,
+    bool isProfilePicture = false,
+  }) {
+    final isSelected = _currentIndex == index;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _currentIndex = index;
+        });
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Center(
+          child: isProfilePicture
+              ? Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected
+                          ? Colors.white
+                          : const Color(0xFF6C6C70),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: ClipOval(
+                    child: Image.asset(
+                      iconPath,
+                      width: 28,
+                      height: 28,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Icon(
+                          Icons.person,
+                          color: isSelected
+                              ? Colors.white
+                              : const Color(0xFF6C6C70),
+                          size: 22,
+                        );
+                      },
+                    ),
+                  ),
+                )
+              : useMaterialIcon && materialIcon != null
+              ? Icon(
+                  materialIcon,
+                  color: isSelected ? Colors.white : const Color(0xFF6C6C70),
+                  size: 28,
+                )
+              : SvgPicture.asset(
+                  iconPath,
+                  width: 28,
+                  height: 28,
+                  colorFilter: ColorFilter.mode(
+                    isSelected ? Colors.white : const Color(0xFF6C6C70),
+                    BlendMode.srcIn,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
   Widget get _currentScreen {
     switch (_currentIndex) {
       case 0:
@@ -96,42 +166,38 @@ class _MainScreenState extends State<MainScreen>
                 );
               },
               child: Container(
+                margin: const EdgeInsets.fromLTRB(30, 0, 30, 50),
+                width: 358,
+                height: 53,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A),
+                  color: const Color(0xFF1D1D1D),
+                  borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, -3),
+                      color: Colors.black.withValues(alpha: 0.6),
+                      blurRadius: 25,
+                      offset: const Offset(0, 10),
                     ),
                   ],
                 ),
-                child: BottomNavigationBar(
-                  currentIndex: _currentIndex,
-                  onTap: (index) {
-                    setState(() {
-                      _currentIndex = index;
-                    });
-                  },
-                  backgroundColor: Colors.transparent,
-                  selectedItemColor: const Color(0xFFFFFFFF),
-                  unselectedItemColor: const Color(0xFF666666),
-                  elevation: 0,
-                  type: BottomNavigationBarType.fixed,
-                  selectedFontSize: 12,
-                  unselectedFontSize: 12,
-                  items: const [
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.adjust),
-                      label: 'Focus',
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildNavItem(
+                      'assets/images/Icons/timericon.svg',
+                      0,
+                      'Focus',
                     ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.people),
-                      label: 'Community',
+                    _buildNavItem(
+                      'assets/images/Icons/groupiconlight.svg',
+                      1,
+                      'Community',
                     ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.person),
-                      label: 'Profile',
+                    _buildNavItem(
+                      'assets/images/pfpplaceholder.JPG',
+                      2,
+                      'Profile',
+                      isProfilePicture: true,
                     ),
                   ],
                 ),
@@ -154,9 +220,9 @@ class FocusScreen extends StatefulWidget {
 class _FocusScreenState extends State<FocusScreen>
     with TickerProviderStateMixin {
   Timer? _timer;
-  int _selectedMinutes = 20; // Default 20 minutes
-  int _totalSeconds = 20 * 60;
-  int _remainingSeconds = 20 * 60;
+  int _selectedMinutes = 60; // Default 60 minutes to match Figma
+  int _totalSeconds = 60 * 60;
+  int _remainingSeconds = 60 * 60;
   bool _isRunning = false;
   bool _isPickerVisible = false;
   late AnimationController _pulseController;
@@ -186,7 +252,7 @@ class _FocusScreenState extends State<FocusScreen>
   Future<void> _extractImageColors() async {
     final PaletteGenerator paletteGenerator =
         await PaletteGenerator.fromImageProvider(
-          const AssetImage('assets/images/purple.png'),
+          const AssetImage('assets/images/lava.png'),
           maximumColorCount: 20,
         );
 
@@ -274,8 +340,9 @@ class _FocusScreenState extends State<FocusScreen>
       (index) => (index + 1) * 5,
     );
     int selectedIndex = minuteOptions.indexOf(_selectedMinutes);
-    if (selectedIndex == -1)
-      selectedIndex = 3; // Default to 20 minutes (index 3)
+    if (selectedIndex == -1) {
+      selectedIndex = 11; // Default to 60 minutes (index 11)
+    }
 
     return GestureDetector(
       onTap: _togglePicker,
@@ -292,8 +359,8 @@ class _FocusScreenState extends State<FocusScreen>
               decoration: BoxDecoration(
                 border: Border.symmetric(
                   horizontal: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.3),
-                    width: 1,
+                    color: Colors.white.withValues(alpha: 0.2),
+                    width: 0,
                   ),
                 ),
               ),
@@ -310,8 +377,9 @@ class _FocusScreenState extends State<FocusScreen>
                   '${minutes.toString().padLeft(2, '0')}:00',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 38,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
               ),
@@ -328,232 +396,118 @@ class _FocusScreenState extends State<FocusScreen>
         ? 1 - (_remainingSeconds / _totalSeconds)
         : 0;
 
+    // Using responsive layout
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Row(
-                children: [
-                  Icon(Icons.eco, color: const Color(0xFFFFFFFF), size: 28),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'FocusFlow',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final screenHeight = constraints.maxHeight;
+          final screenWidth = constraints.maxWidth;
+
+          return Container(
+            width: double.infinity,
+            height: double.infinity,
+            clipBehavior: Clip.antiAlias,
+            decoration: const BoxDecoration(color: Colors.black),
+            child: Stack(
+              children: [
+                // Timer text and picker - Centered
+                if (!_isRunning && _isPickerVisible)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top:
+                        screenHeight *
+                        0.522, // Adjusted to center the 150px picker
+                    child: GestureDetector(
+                      onTap: _togglePicker,
+                      child: Center(child: _buildTimePicker()),
                     ),
                   ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.settings_outlined),
-                    color: const Color(0xFFFFFFFF),
-                    onPressed: () {},
-                  ),
-                ],
-              ),
-            ),
 
-            // Main Timer Area
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  if (_isPickerVisible && !_isRunning) {
-                    _togglePicker();
-                  }
-                },
-                behavior: HitTestBehavior.translucent,
-                child: Column(
-                  children: [
-                    // Timer content - takes available space
-                    Expanded(
+                // Timer text - Centered
+                if (!_isPickerVisible || _isRunning)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: screenHeight * 0.570, // 504/844 ≈ 0.597
+                    child: GestureDetector(
+                      onTap: _togglePicker,
                       child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                // Progress Circle
-                                SizedBox(
-                                  width: 240,
-                                  height: 240,
-                                  child: CustomPaint(
-                                    painter: CircularProgressPainter(
-                                      progress: progress,
-                                      isRunning: _isRunning,
-                                    ),
-                                  ),
-                                ),
-
-                                // Radial gradient background behind earth with soft edges
-                                if (_paletteColors.isNotEmpty)
-                                  Container(
-                                    width: 240,
-                                    height: 240,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: RadialGradient(
-                                        colors: [
-                                          _paletteColors.first.withValues(
-                                            alpha: 0.9,
-                                          ),
-                                          _paletteColors.length > 1
-                                              ? _paletteColors[1].withValues(
-                                                  alpha: 0.7,
-                                                )
-                                              : _paletteColors.first.withValues(
-                                                  alpha: 0.7,
-                                                ),
-                                          _paletteColors.length > 2
-                                              ? _paletteColors[2].withValues(
-                                                  alpha: 0.5,
-                                                )
-                                              : _paletteColors.last.withValues(
-                                                  alpha: 0.5,
-                                                ),
-                                          _paletteColors.last.withValues(
-                                            alpha: 0.25,
-                                          ),
-                                          _paletteColors.last.withValues(
-                                            alpha: 0.1,
-                                          ),
-                                          Colors.transparent,
-                                        ],
-                                        stops: const [
-                                          0.0,
-                                          0.25,
-                                          0.45,
-                                          0.65,
-                                          0.85,
-                                          1.0,
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-
-                                // Center content - Earth image with sophisticated shadow
-                                Container(
-                                  width: 120,
-                                  height: 120,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                        blurRadius: 30,
-                                        spreadRadius: 5,
-                                        offset: const Offset(0, 10),
-                                      ),
-                                      BoxShadow(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.2,
-                                        ),
-                                        blurRadius: 60,
-                                        spreadRadius: 10,
-                                        offset: const Offset(0, 20),
-                                      ),
-                                    ],
-                                    image: const DecorationImage(
-                                      image: AssetImage(
-                                        'assets/images/purple.png',
-                                      ),
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                        child: AnimatedBuilder(
+                          animation: _timerScaleAnimation,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _timerScaleAnimation.value,
+                              child: child,
+                            );
+                          },
+                          child: Text(
+                            '${(_remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_remainingSeconds % 60).toString().padLeft(2, '0')}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 45,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w400,
                             ),
-
-                            const SizedBox(height: 30),
-
-                            // Timer display or picker - inline toggle with fixed height
-                            GestureDetector(
-                              onTap: _togglePicker,
-                              child: SizedBox(
-                                height: 150,
-                                child: _isPickerVisible && !_isRunning
-                                    ? _buildTimePicker()
-                                    : AnimatedBuilder(
-                                        animation: _timerScaleAnimation,
-                                        builder: (context, child) {
-                                          return Transform.scale(
-                                            scale: _timerScaleAnimation.value,
-                                            child: child,
-                                          );
-                                        },
-                                        child: Center(
-                                          child: Text(
-                                            '${(_remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_remainingSeconds % 60).toString().padLeft(2, '0')}',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 32,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
+                  ),
 
-                    // Control buttons - fixed at bottom with 20px spacing
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 20.0),
+                // Pause and Stop buttons container - when running
+                if (_isRunning)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: screenHeight * 0.723, // 610/844 ≈ 0.723
+                    child: Center(
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Pause/Play button (smaller, square with rounded corners)
-                          Container(
-                            width: 60,
-                            height: 60,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFFFFF),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: IconButton(
-                              icon: Icon(
-                                _isRunning ? Icons.pause : Icons.play_arrow,
-                                size: 32,
+                          // Pause button
+                          GestureDetector(
+                            onTap: _pauseTimer,
+                            child: Container(
+                              width: 60,
+                              height: 55,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1D1D1D),
+                                borderRadius: BorderRadius.circular(16),
                               ),
-                              color: const Color(0xFF000000),
-                              onPressed: () {
-                                if (_isRunning) {
-                                  _pauseTimer();
-                                } else {
-                                  _startTimer();
-                                }
-                              },
+                              child: const Center(
+                                child: Icon(
+                                  Icons.pause,
+                                  size: 32,
+                                  color: Color(0xFFFFFFFF),
+                                ),
+                              ),
                             ),
                           ),
-
                           const SizedBox(width: 16),
-
-                          // Stop button (pill-shaped)
-                          Container(
-                            height: 60,
-                            padding: const EdgeInsets.symmetric(horizontal: 32),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2A2A2A),
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            child: TextButton(
-                              onPressed: _stopTimer,
-                              child: const Text(
-                                'Stop focusing',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
+                          // Stop button
+                          GestureDetector(
+                            onTap: _stopTimer,
+                            child: Container(
+                              width: 185,
+                              height: 55,
+                              decoration: ShapeDecoration(
+                                color: const Color(0xFF1D1D1D),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(17),
+                                ),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  'Stop focusing',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontFamily: 'Inter',
+                                    fontWeight: FontWeight.w400,
+                                  ),
                                 ),
                               ),
                             ),
@@ -561,12 +515,115 @@ class _FocusScreenState extends State<FocusScreen>
                         ],
                       ),
                     ),
-                  ],
+                  ),
+
+                // Start focusing button - Centered
+                if (!_isRunning)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: screenHeight * 0.723, // 610/844 ≈ 0.723
+                    child: Center(
+                      child: GestureDetector(
+                        onTap: _startTimer,
+                        child: Container(
+                          width: 185,
+                          height: 55,
+                          decoration: ShapeDecoration(
+                            color: const Color(0xFF1D1D1D),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(17),
+                            ),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Start focusing',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Progress circle - Centered
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: screenHeight * 0.135, // 114/844 ≈ 0.135
+                  child: Center(
+                    child: SizedBox(
+                      width: 227,
+                      height: 227,
+                      child: CustomPaint(
+                        painter: CircularProgressPainter(
+                          progress: progress,
+                          isRunning: _isRunning,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+
+                // RAW logo - 16px from left, 50px from top
+                Positioned(
+                  left: 16,
+                  top: 50,
+                  child: Image.asset(
+                    'assets/images/rawlogo.png',
+                    width: 70,
+                    height: 31,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      print('Error loading rawlogo.png: $error');
+                      return const Text(
+                        'RAW',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // Streak counter - 16px from right, 50px from top
+                Positioned(
+                  right: 16,
+                  top: 50,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        '1',
+                        style: TextStyle(
+                          color: Color(0xFFE68510),
+                          fontSize: 16,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.local_fire_department,
+                        color: Color(0xFFFFA500),
+                        size: 14,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -616,9 +673,9 @@ class CommunityScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF000000),
-      body: const Center(
+    return const Scaffold(
+      backgroundColor: Color(0xFF000000),
+      body: Center(
         child: Text(
           'Community',
           style: TextStyle(color: Colors.white, fontSize: 24),
@@ -634,9 +691,9 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF000000),
-      body: const Center(
+    return const Scaffold(
+      backgroundColor: Color(0xFF000000),
+      body: Center(
         child: Text(
           'Profile',
           style: TextStyle(color: Colors.white, fontSize: 24),
