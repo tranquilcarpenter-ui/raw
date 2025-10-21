@@ -4,7 +4,9 @@
       "Bash(flutter analyze:*)",
       "Bash(flutter:*)",
       "Bash(timeout:*)",
-      "Bash(del nul)"
+      "Bash(del nul)",
+      "Bash(where claude)",
+      "Bash(if exist \"%USERPROFILE%\\.config\\claude-code\\mcp.json\" type \"%USERPROFILE%\\.config\\claude-code\\mcp.json\")"
     ],
     "deny": [],
     "ask": []
