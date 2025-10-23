@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -112,6 +114,33 @@ class UserStatistics {
   }
 }
 
+// Profile Image Provider
+class ProfileImageProvider extends InheritedWidget {
+  final String? profileImagePath;
+  final String? bannerImagePath;
+  final Function(String?) updateProfileImage;
+  final Function(String?) updateBannerImage;
+
+  const ProfileImageProvider({
+    super.key,
+    required this.profileImagePath,
+    required this.bannerImagePath,
+    required this.updateProfileImage,
+    required this.updateBannerImage,
+    required super.child,
+  });
+
+  static ProfileImageProvider? of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<ProfileImageProvider>();
+  }
+
+  @override
+  bool updateShouldNotify(ProfileImageProvider oldWidget) {
+    return oldWidget.profileImagePath != profileImagePath ||
+        oldWidget.bannerImagePath != bannerImagePath;
+  }
+}
+
 // Global state management for user statistics
 class UserStatisticsProvider extends InheritedWidget {
   final UserStatistics statistics;
@@ -147,6 +176,8 @@ class FocusFlowApp extends StatefulWidget {
 
 class _FocusFlowAppState extends State<FocusFlowApp> {
   late UserStatistics _statistics;
+  String? _profileImagePath;
+  String? _bannerImagePath;
 
   @override
   void initState() {
@@ -160,20 +191,38 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
     });
   }
 
+  void _updateProfileImage(String? imagePath) {
+    setState(() {
+      _profileImagePath = imagePath;
+    });
+  }
+
+  void _updateBannerImage(String? imagePath) {
+    setState(() {
+      _bannerImagePath = imagePath;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return UserStatisticsProvider(
-      statistics: _statistics,
-      updateStatistics: _updateStatistics,
-      child: MaterialApp(
-        title: 'RAW',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          scaffoldBackgroundColor: const Color(0xFF000000),
-          primaryColor: const Color(0xFFFFFFFF),
-          fontFamily: 'Inter',
+    return ProfileImageProvider(
+      profileImagePath: _profileImagePath,
+      bannerImagePath: _bannerImagePath,
+      updateProfileImage: _updateProfileImage,
+      updateBannerImage: _updateBannerImage,
+      child: UserStatisticsProvider(
+        statistics: _statistics,
+        updateStatistics: _updateStatistics,
+        child: MaterialApp(
+          title: 'RAW',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            scaffoldBackgroundColor: const Color(0xFF000000),
+            primaryColor: const Color(0xFFFFFFFF),
+            fontFamily: 'Inter',
+          ),
+          home: const MainScreen(),
         ),
-        home: const MainScreen(),
       ),
     );
   }
@@ -207,6 +256,8 @@ class _MainScreenState extends State<MainScreen>
   int _currentIndex = 0;
   AnimationController? _navBarController;
   Animation<double>? _navBarAnimation;
+  bool _isFocusRunning = false;
+  bool _isScrollingDown = false;
 
   @override
   void initState() {
@@ -226,12 +277,27 @@ class _MainScreenState extends State<MainScreen>
     super.dispose();
   }
 
-  void _onFocusStateChanged(bool isRunning) {
-    if (isRunning) {
+  void _updateNavBarVisibility() {
+    // Hide nav bar if either focus is running OR user is scrolling down
+    if (_isFocusRunning || _isScrollingDown) {
       _navBarController?.forward();
     } else {
       _navBarController?.reverse();
     }
+  }
+
+  void _onFocusStateChanged(bool isRunning) {
+    setState(() {
+      _isFocusRunning = isRunning;
+    });
+    _updateNavBarVisibility();
+  }
+
+  void _onScrollDirectionChanged(bool isScrollingDown) {
+    setState(() {
+      _isScrollingDown = isScrollingDown;
+    });
+    _updateNavBarVisibility();
   }
 
   Widget _buildNavItem(
@@ -241,6 +307,7 @@ class _MainScreenState extends State<MainScreen>
     bool useMaterialIcon = false,
     IconData? materialIcon,
     bool isProfilePicture = false,
+    bool isCustomImage = false,
   }) {
     final isSelected = _currentIndex == index;
     return GestureDetector(
@@ -266,21 +333,37 @@ class _MainScreenState extends State<MainScreen>
                     ),
                   ),
                   child: ClipOval(
-                    child: Image.asset(
-                      iconPath,
-                      width: 28,
-                      height: 28,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Icon(
-                          Icons.person,
-                          color: isSelected
-                              ? Colors.white
-                              : const Color(0xFF6C6C70),
-                          size: 22,
-                        );
-                      },
-                    ),
+                    child: isCustomImage
+                        ? Image.file(
+                            File(iconPath),
+                            width: 28,
+                            height: 28,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(
+                                Icons.person,
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFF6C6C70),
+                                size: 22,
+                              );
+                            },
+                          )
+                        : Image.asset(
+                            iconPath,
+                            width: 28,
+                            height: 28,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(
+                                Icons.person,
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFF6C6C70),
+                                size: 22,
+                              );
+                            },
+                          ),
                   ),
                 )
               : useMaterialIcon && materialIcon != null
@@ -308,9 +391,13 @@ class _MainScreenState extends State<MainScreen>
       case 0:
         return FocusScreen(onFocusStateChanged: _onFocusStateChanged);
       case 1:
-        return const CommunityScreen();
+        return CommunityScreen(
+          onScrollDirectionChanged: _onScrollDirectionChanged,
+        );
       case 2:
-        return const ProfileScreen();
+        return ProfileScreen(
+          onScrollDirectionChanged: _onScrollDirectionChanged,
+        );
       default:
         return FocusScreen(onFocusStateChanged: _onFocusStateChanged);
     }
@@ -318,6 +405,9 @@ class _MainScreenState extends State<MainScreen>
 
   @override
   Widget build(BuildContext context) {
+    final profileImageProvider = ProfileImageProvider.of(context);
+    final profileImagePath = profileImageProvider?.profileImagePath;
+
     return Scaffold(
       extendBody: true,
       body: _currentScreen,
@@ -401,10 +491,11 @@ class _MainScreenState extends State<MainScreen>
                             'Community',
                           ),
                           _buildNavItem(
-                            'assets/images/pfpplaceholder.JPG',
+                            profileImagePath ?? 'assets/images/pfpplaceholder.JPG',
                             2,
                             'Profile',
                             isProfilePicture: true,
+                            isCustomImage: profileImagePath != null,
                           ),
                         ],
                       ),
@@ -612,7 +703,6 @@ class _FocusScreenState extends State<FocusScreen>
       body: LayoutBuilder(
         builder: (context, constraints) {
           final screenHeight = constraints.maxHeight;
-          final screenWidth = constraints.maxWidth;
 
           return Container(
             width: double.infinity,
@@ -881,7 +971,7 @@ class _FocusScreenState extends State<FocusScreen>
                     height: 31,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
-                      print('Error loading rawlogo.png: $error');
+                      debugPrint('Error loading rawlogo.png: $error');
                       return const Text(
                         'RAW',
                         style: TextStyle(
@@ -978,7 +1068,9 @@ class CircularProgressPainter extends CustomPainter {
 
 // Community Screen
 class CommunityScreen extends StatefulWidget {
-  const CommunityScreen({super.key});
+  final Function(bool)? onScrollDirectionChanged;
+
+  const CommunityScreen({super.key, this.onScrollDirectionChanged});
 
   @override
   State<CommunityScreen> createState() => _CommunityScreenState();
@@ -987,6 +1079,11 @@ class CommunityScreen extends StatefulWidget {
 class _CommunityScreenState extends State<CommunityScreen> {
   int _selectedTab = 0; // 0 for Friends, 1 for Groups
   int _selectedFilter = 1; // 0 for Month, 1 for All time
+
+  final ScrollController _friendsScrollController = ScrollController();
+  final ScrollController _groupsScrollController = ScrollController();
+  double _lastScrollOffset = 0;
+  bool _isScrollingDown = false;
 
   final List<Map<String, dynamic>> _friends = [
     {'rank': 1, 'name': 'Alex Wang', 'emoji': '18🔥', 'hours': '1252 h'},
@@ -997,6 +1094,47 @@ class _CommunityScreenState extends State<CommunityScreen> {
     {'rank': 6, 'name': 'Luis Difal', 'emoji': '', 'hours': '212 h'},
     {'rank': 7, 'name': 'Gyenge Márk', 'emoji': '24🔥', 'hours': '197 h'},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _friendsScrollController.addListener(_onScroll);
+    _groupsScrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _friendsScrollController.removeListener(_onScroll);
+    _groupsScrollController.removeListener(_onScroll);
+    _friendsScrollController.dispose();
+    _groupsScrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    final ScrollController activeController = _selectedTab == 0
+        ? _friendsScrollController
+        : _groupsScrollController;
+
+    if (activeController.hasClients) {
+      final currentOffset = activeController.offset;
+      final scrollDelta = currentOffset - _lastScrollOffset;
+
+      // Only trigger if scroll is significant (more than 5 pixels)
+      if (scrollDelta.abs() > 5) {
+        final isScrollingDown = scrollDelta > 0;
+
+        if (_isScrollingDown != isScrollingDown) {
+          setState(() {
+            _isScrollingDown = isScrollingDown;
+          });
+          widget.onScrollDirectionChanged?.call(isScrollingDown);
+        }
+      }
+
+      _lastScrollOffset = currentOffset;
+    }
+  }
 
   Widget _buildToggleButton(String text, IconData icon, int index) {
     final isSelected = _selectedTab == index;
@@ -1219,6 +1357,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
           Expanded(
             child: _selectedTab == 0
                 ? ListView.builder(
+                    controller: _friendsScrollController,
                     itemCount: _friends.length,
                     itemBuilder: (context, index) {
                       return _buildFriendRow(_friends[index]);
@@ -1289,6 +1428,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         // Group Members List
         Expanded(
           child: ListView.builder(
+            controller: _groupsScrollController,
             itemCount: _friends.length,
             itemBuilder: (context, index) {
               return _buildFriendRow(_friends[index]);
@@ -1302,7 +1442,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
 // Profile Screen
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final Function(bool)? onScrollDirectionChanged;
+
+  const ProfileScreen({super.key, this.onScrollDirectionChanged});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -1313,6 +1455,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _currentOffset =
       0; // Offset for navigation (0 = current period, 1 = previous period, etc.)
   int? _selectedDayIndex; // Index of selected bar in the graph
+
+  final ScrollController _scrollController = ScrollController();
+  double _lastScrollOffset = 0;
+  bool _isScrollingDown = false;
 
   // Get the number of days based on selected period
   int get _daysInPeriod {
@@ -1374,6 +1520,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // Year format - show the year being viewed
         return '${now.year - _currentOffset}';
       }
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients) {
+      final currentOffset = _scrollController.offset;
+      final scrollDelta = currentOffset - _lastScrollOffset;
+
+      // Only trigger if scroll is significant (more than 5 pixels)
+      if (scrollDelta.abs() > 5) {
+        final isScrollingDown = scrollDelta > 0;
+
+        if (_isScrollingDown != isScrollingDown) {
+          setState(() {
+            _isScrollingDown = isScrollingDown;
+          });
+          widget.onScrollDirectionChanged?.call(isScrollingDown);
+        }
+      }
+
+      _lastScrollOffset = currentOffset;
     }
   }
 
@@ -1462,478 +1642,519 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final statistics =
         statisticsProvider?.statistics ?? UserStatistics.initial();
 
+    final profileImageProvider = ProfileImageProvider.of(context);
+    final profileImagePath = profileImageProvider?.profileImagePath;
+    final bannerImagePath = profileImageProvider?.bannerImagePath;
+
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Banner and Profile Header Stack
-            Stack(
-              clipBehavior: Clip.none,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            controller: _scrollController,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Banner Image with alpha fade and gradient overlay
-                SizedBox(
-                  width: double.infinity,
-                  height: 220,
-                  child: Stack(
-                    children: [
-                      // Banner image with alpha fade
-                      Positioned.fill(
-                        child: ShaderMask(
-                          shaderCallback: (Rect bounds) {
-                            return const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.black,
-                                Colors.black,
-                                Colors.black,
-                                Colors.transparent,
-                              ],
-                              stops: [0.0, 0.5, 0.7, 1.0],
-                            ).createShader(bounds);
-                          },
-                          blendMode: BlendMode.dstIn,
-                          child: Image.asset(
-                            'assets/images/pfbannerplaceholder.jpg',
-                            fit: BoxFit.fitWidth,
-                            alignment: Alignment.topCenter,
-                            width: double.infinity,
+                // Banner and Profile Header Stack
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Banner Image with alpha fade and gradient overlay
+                    SizedBox(
+                      width: double.infinity,
+                      height: 220,
+                      child: Stack(
+                        children: [
+                          // Banner image with alpha fade
+                          Positioned.fill(
+                            child: ShaderMask(
+                              shaderCallback: (Rect bounds) {
+                                return const LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.black,
+                                    Colors.black,
+                                    Colors.black,
+                                    Colors.transparent,
+                                  ],
+                                  stops: [0.0, 0.5, 0.7, 1.0],
+                                ).createShader(bounds);
+                              },
+                              blendMode: BlendMode.dstIn,
+                              child: bannerImagePath != null
+                                  ? Image.file(
+                                      File(bannerImagePath),
+                                      fit: BoxFit.cover,
+                                      alignment: Alignment.topCenter,
+                                      width: double.infinity,
+                                    )
+                                  : Image.asset(
+                                      'assets/images/pfbannerplaceholder.jpg',
+                                      fit: BoxFit.fitWidth,
+                                      alignment: Alignment.topCenter,
+                                      width: double.infinity,
+                                    ),
+                            ),
+                          ),
+                          // Gradient overlay for darkening
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.transparent,
+                                    Colors.transparent,
+                                    const Color(
+                                      0xFF000000,
+                                    ).withValues(alpha: 0.05),
+                                    const Color(
+                                      0xFF000000,
+                                    ).withValues(alpha: 0.15),
+                                    const Color(
+                                      0xFF000000,
+                                    ).withValues(alpha: 0.3),
+                                    const Color(
+                                      0xFF000000,
+                                    ).withValues(alpha: 0.5),
+                                    const Color(
+                                      0xFF000000,
+                                    ).withValues(alpha: 0.7),
+                                    const Color(
+                                      0xFF000000,
+                                    ).withValues(alpha: 0.88),
+                                    const Color(0xFF000000),
+                                  ],
+                                  stops: const [
+                                    0.0,
+                                    0.15,
+                                    0.3,
+                                    0.42,
+                                    0.54,
+                                    0.65,
+                                    0.75,
+                                    0.85,
+                                    0.95,
+                                    1.0,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Profile picture overlaying the banner bottom
+                    Positioned(
+                      top: 180,
+                      left: 16,
+                      child: Container(
+                        width: 90,
+                        height: 90,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFF000000),
+                            width: 4,
+                          ),
+                          color: const Color(0xFF2C2C2E),
+                        ),
+                        child: ClipOval(
+                          child: profileImagePath != null
+                              ? Image.file(
+                                  File(profileImagePath),
+                                  fit: BoxFit.cover,
+                                  width: 90,
+                                  height: 90,
+                                )
+                              : const Icon(Icons.person, color: Colors.white, size: 45),
+                        ),
+                      ),
+                    ),
+                    // Settings icon on banner
+                    Positioned(
+                      top: 180,
+                      right: 16,
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SettingsScreen(),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF000000,
+                            ).withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.settings,
+                            color: Colors.white,
+                            size: 22,
                           ),
                         ),
                       ),
-                      // Gradient overlay for darkening
-                      Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                Colors.transparent,
-                                Colors.transparent,
-                                const Color(0xFF000000).withValues(alpha: 0.05),
-                                const Color(0xFF000000).withValues(alpha: 0.15),
-                                const Color(0xFF000000).withValues(alpha: 0.3),
-                                const Color(0xFF000000).withValues(alpha: 0.5),
-                                const Color(0xFF000000).withValues(alpha: 0.7),
-                                const Color(0xFF000000).withValues(alpha: 0.88),
-                                const Color(0xFF000000),
-                              ],
-                              stops: const [
-                                0.0,
-                                0.15,
-                                0.3,
-                                0.42,
-                                0.54,
-                                0.65,
-                                0.75,
-                                0.85,
-                                0.95,
-                                1.0,
+                    ),
+                    // Profile info (Name and rank) positioned next to profile picture
+                    Positioned(
+                      top: 180,
+                      left: 120,
+                      right: 16,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Serena',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2C2C2E),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.emoji_events,
+                                  color: Color(0xFFFFD700),
+                                  size: 12,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  statistics.rankPercentage,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontFamily: 'Inter',
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Profile picture overlaying the banner bottom
-                Positioned(
-                  top: 180,
-                  left: 16,
-                  child: Container(
-                    width: 90,
-                    height: 90,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFF000000),
-                        width: 4,
-                      ),
-                      color: const Color(0xFF2C2C2E),
-                    ),
-                    child: const ClipOval(
-                      child: Icon(Icons.person, color: Colors.white, size: 45),
-                    ),
-                  ),
-                ),
-                // Settings icon on banner
-                Positioned(
-                  top: 180,
-                  right: 16,
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SettingsScreen(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF000000).withValues(alpha: 0.5),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.settings,
-                        color: Colors.white,
-                        size: 22,
+                        ],
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                // Profile info (Name and rank) positioned next to profile picture
-                Positioned(
-                  top: 180,
-                  left: 120,
-                  right: 16,
+
+                const SizedBox(height: 80),
+
+                // Rest of content with AppSafeArea padding
+                AppSafeArea(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Serena',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontFamily: 'Inter',
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2C2C2E),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.emoji_events,
-                              color: Color(0xFFFFD700),
-                              size: 12,
+                      const SizedBox(height: 20),
+
+                      // Achievement Badges Row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: List.generate(7, (index) {
+                          final colors = [
+                            [const Color(0xFF6B46C1), const Color(0xFF3B21A8)],
+                            [const Color(0xFF06B6D4), const Color(0xFF0891B2)],
+                            [const Color(0xFFDC2626), const Color(0xFF991B1B)],
+                            [const Color(0xFF84CC16), const Color(0xFF65A30D)],
+                            [const Color(0xFF0EA5E9), const Color(0xFF0284C7)],
+                            [const Color(0xFFF97316), const Color(0xFFEA580C)],
+                            [const Color(0xFF10B981), const Color(0xFF059669)],
+                          ];
+                          return Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: colors[index],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              ),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: colors[index][0].withValues(
+                                    alpha: 0.4,
+                                  ),
+                                  blurRadius: 8,
+                                  spreadRadius: 1,
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              statistics.rankPercentage,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontFamily: 'Inter',
-                                fontWeight: FontWeight.w500,
+                          );
+                        }),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Stats Cards Row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 140,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1C1C1E),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '${statistics.dayStreak}',
+                                    style: const TextStyle(
+                                      color: Color(0xFFFFD700),
+                                      fontSize: 48,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'DAY STREAK',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Container(
+                              height: 140,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1C1C1E),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '${statistics.focusHours}',
+                                    style: const TextStyle(
+                                      color: Color(0xFFB794F6),
+                                      fontSize: 48,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'FOCUS HOURS',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+
+                      const SizedBox(height: 12),
+
+                      // Small Stats Cards
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 60,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1C1C1E),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF2C2C2E),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.emoji_events,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        statistics.currentBadge,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        statistics.currentBadgeProgress,
+                                        style: const TextStyle(
+                                          color: Color(0xFF8E8E93),
+                                          fontSize: 11,
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Container(
+                              height: 60,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1C1C1E),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF2C2C2E),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.military_tech,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        statistics.nextBadge,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        statistics.nextBadgeProgress,
+                                        style: const TextStyle(
+                                          color: Color(0xFF8E8E93),
+                                          fontSize: 11,
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Activity Graph
+                      _buildActivityGraph(statistics),
+
+                      const SizedBox(height: 16),
+
+                      // Period Navigation
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          GestureDetector(
+                            onTap: _navigatePrevious,
+                            child: const Icon(
+                              Icons.chevron_left,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                          Text(
+                            _periodLabel,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: _navigateNext,
+                            child: Icon(
+                              Icons.chevron_right,
+                              color: _currentOffset > 0
+                                  ? Colors.white
+                                  : const Color(0xFF3A3A3C),
+                              size: 24,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 30),
                     ],
                   ),
                 ),
               ],
             ),
-
-            const SizedBox(height: 80),
-
-            // Rest of content with AppSafeArea padding
-            AppSafeArea(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 20),
-
-                  // Achievement Badges Row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: List.generate(7, (index) {
-                      final colors = [
-                        [const Color(0xFF6B46C1), const Color(0xFF3B21A8)],
-                        [const Color(0xFF06B6D4), const Color(0xFF0891B2)],
-                        [const Color(0xFFDC2626), const Color(0xFF991B1B)],
-                        [const Color(0xFF84CC16), const Color(0xFF65A30D)],
-                        [const Color(0xFF0EA5E9), const Color(0xFF0284C7)],
-                        [const Color(0xFFF97316), const Color(0xFFEA580C)],
-                        [const Color(0xFF10B981), const Color(0xFF059669)],
-                      ];
-                      return Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: colors[index],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                          ),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: colors[index][0].withValues(alpha: 0.4),
-                              blurRadius: 8,
-                              spreadRadius: 1,
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Stats Cards Row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          height: 140,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1C1C1E),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                '${statistics.dayStreak}',
-                                style: const TextStyle(
-                                  color: Color(0xFFFFD700),
-                                  fontSize: 48,
-                                  fontFamily: 'Inter',
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'DAY STREAK',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontFamily: 'Inter',
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Container(
-                          height: 140,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1C1C1E),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                '${statistics.focusHours}',
-                                style: const TextStyle(
-                                  color: Color(0xFFB794F6),
-                                  fontSize: 48,
-                                  fontFamily: 'Inter',
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'FOCUS HOURS',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontFamily: 'Inter',
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Small Stats Cards
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          height: 60,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1C1C1E),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF2C2C2E),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.emoji_events,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    statistics.currentBadge,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    statistics.currentBadgeProgress,
-                                    style: const TextStyle(
-                                      color: Color(0xFF8E8E93),
-                                      fontSize: 11,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Container(
-                          height: 60,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1C1C1E),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF2C2C2E),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.military_tech,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    statistics.nextBadge,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    statistics.nextBadgeProgress,
-                                    style: const TextStyle(
-                                      color: Color(0xFF8E8E93),
-                                      fontSize: 11,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Activity Graph
-                  _buildActivityGraph(statistics),
-
-                  const SizedBox(height: 16),
-
-                  // Period Navigation
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      GestureDetector(
-                        onTap: _navigatePrevious,
-                        child: const Icon(
-                          Icons.chevron_left,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                      ),
-                      Text(
-                        _periodLabel,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontFamily: 'Inter',
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _navigateNext,
-                        child: Icon(
-                          Icons.chevron_right,
-                          color: _currentOffset > 0
-                              ? Colors.white
-                              : const Color(0xFF3A3A3C),
-                          size: 24,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 30),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2438,6 +2659,366 @@ class DashedLinePainter extends CustomPainter {
 }
 
 // Settings Screen
+// Account Settings Screen
+class AccountSettingsScreen extends StatefulWidget {
+  const AccountSettingsScreen({super.key});
+
+  @override
+  State<AccountSettingsScreen> createState() => _AccountSettingsScreenState();
+}
+
+class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickProfilePicture() async {
+    try {
+      // Show bottom sheet to choose between camera and gallery
+      final ImageSource? source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Choose Profile Picture',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ListTile(
+                  leading: const Icon(Icons.photo_library, color: Color(0xFF06B6D4)),
+                  title: const Text(
+                    'Gallery',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.camera_alt, color: Color(0xFF06B6D4)),
+                  title: const Text(
+                    'Camera',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      if (source != null) {
+        final XFile? image = await _picker.pickImage(
+          source: source,
+          maxWidth: 1024,
+          maxHeight: 1024,
+          imageQuality: 85,
+        );
+
+        if (image != null && mounted) {
+          // Save the profile picture path
+          final profileImageProvider = ProfileImageProvider.of(context);
+          profileImageProvider?.updateProfileImage(image.path);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Profile picture updated: ${image.name}'),
+              backgroundColor: const Color(0xFF00C853),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking image: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickBannerPicture() async {
+    try {
+      // Show bottom sheet to choose between camera and gallery
+      final ImageSource? source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Choose Banner Picture',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ListTile(
+                  leading: const Icon(Icons.photo_library, color: Color(0xFFEC4899)),
+                  title: const Text(
+                    'Gallery',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.camera_alt, color: Color(0xFFEC4899)),
+                  title: const Text(
+                    'Camera',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      if (source != null) {
+        final XFile? image = await _picker.pickImage(
+          source: source,
+          maxWidth: 2048,
+          maxHeight: 2048,
+          imageQuality: 85,
+        );
+
+        if (image != null && mounted) {
+          // Save the banner picture path
+          final profileImageProvider = ProfileImageProvider.of(context);
+          profileImageProvider?.updateBannerImage(image.path);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Banner picture updated: ${image.name}'),
+              backgroundColor: const Color(0xFF00C853),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking image: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildSettingsItem({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+    Color? iconColor,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: (iconColor ?? const Color(0xFF7C3AED)).withValues(
+                  alpha: 0.2,
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: iconColor ?? const Color(0xFF7C3AED),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Color(0xFF8E8E93),
+                      fontSize: 13,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right,
+              color: Color(0xFF8E8E93),
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF000000),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Account Settings',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 17,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: AppSafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Profile',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Profile Picture
+              _buildSettingsItem(
+                context: context,
+                title: 'Profile Picture',
+                subtitle: 'Change your profile picture',
+                icon: Icons.account_circle,
+                iconColor: const Color(0xFF06B6D4),
+                onTap: _pickProfilePicture,
+              ),
+
+              // Banner Picture
+              _buildSettingsItem(
+                context: context,
+                title: 'Banner Picture',
+                subtitle: 'Change your profile banner',
+                icon: Icons.wallpaper,
+                iconColor: const Color(0xFFEC4899),
+                onTap: _pickBannerPicture,
+              ),
+
+              const SizedBox(height: 24),
+
+              const Text(
+                'Account Information',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Username
+              _buildSettingsItem(
+                context: context,
+                title: 'Username',
+                subtitle: 'Change your username',
+                icon: Icons.person,
+                iconColor: const Color(0xFF8B5CF6),
+                onTap: () {
+                  // TODO: Implement username change
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Username change coming soon!'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+
+              // Email
+              _buildSettingsItem(
+                context: context,
+                title: 'Email',
+                subtitle: 'Update your email address',
+                icon: Icons.email,
+                iconColor: const Color(0xFFF59E0B),
+                onTap: () {
+                  // TODO: Implement email change
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Email change coming soon!'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -2479,17 +3060,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
 
       // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Random data generated!\n'
-            'Day Streak: ${newStatistics.dayStreak}, '
-            'Focus Hours: ${newStatistics.focusHours}',
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Random data generated!\n'
+              'Day Streak: ${newStatistics.dayStreak}, '
+              'Focus Hours: ${newStatistics.focusHours}',
+            ),
+            backgroundColor: const Color(0xFF00C853),
+            duration: const Duration(seconds: 3),
           ),
-          backgroundColor: const Color(0xFF00C853),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+        );
+      }
     });
   }
 
@@ -2607,7 +3190,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'Account',
                 subtitle: 'Manage your account settings',
                 icon: Icons.person_outline,
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AccountSettingsScreen(),
+                    ),
+                  );
+                },
               ),
 
               // Notifications
