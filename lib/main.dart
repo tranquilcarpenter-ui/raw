@@ -8,6 +8,14 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+// Focus Session Data Model
+class FocusSession {
+  DateTime start;
+  Duration duration;
+
+  FocusSession({required this.start, required this.duration});
+}
+
 // User Statistics Data Model
 class UserStatistics {
   int dayStreak;
@@ -18,8 +26,13 @@ class UserStatistics {
   String nextBadge;
   String nextBadgeProgress;
   Map<DateTime, double> dailyActivityData; // Date -> hours focused
+  List<FocusSession> focusSessions; // List of all focus sessions
+  Map<int, double>?
+  timeOfDayPerformance; // Hour (0-23) -> average minutes focused during that hour
   bool isGeneratedData; // Flag to indicate if data is test data
   DateTime? generatedAt; // Timestamp when data was generated
+  bool isPro; // Pro user status
+  String fullName; // User's full name
 
   UserStatistics({
     required this.dayStreak,
@@ -30,9 +43,66 @@ class UserStatistics {
     required this.nextBadge,
     required this.nextBadgeProgress,
     required this.dailyActivityData,
+    required this.focusSessions,
+    this.timeOfDayPerformance,
     this.isGeneratedData = false,
     this.generatedAt,
+    this.isPro = true, // Default to true for now
+    this.fullName = 'Kristian Watson', // Default name
   });
+
+  // Calculate time of day performance from focus sessions
+  static Map<int, double> _calculateTimeOfDayPerformance(
+    List<FocusSession> sessions,
+  ) {
+    // Initialize hour counters: total minutes focused and session count for each hour
+    final Map<int, double> totalMinutes = {};
+    final Map<int, int> sessionCounts = {};
+
+    for (int i = 0; i < 24; i++) {
+      totalMinutes[i] = 0.0;
+      sessionCounts[i] = 0;
+    }
+
+    // Process each focus session
+    for (final session in sessions) {
+      DateTime currentTime = session.start;
+      int remainingMinutes = session.duration.inMinutes;
+
+      // Distribute the session across hours
+      while (remainingMinutes > 0) {
+        final hour = currentTime.hour;
+        final minutesUntilNextHour = 60 - currentTime.minute;
+        final minutesInThisHour = remainingMinutes < minutesUntilNextHour
+            ? remainingMinutes
+            : minutesUntilNextHour;
+
+        totalMinutes[hour] = (totalMinutes[hour] ?? 0.0) + minutesInThisHour;
+        sessionCounts[hour] = (sessionCounts[hour] ?? 0) + 1;
+
+        remainingMinutes -= minutesInThisHour;
+        currentTime = currentTime.add(Duration(minutes: minutesInThisHour));
+      }
+    }
+
+    // Calculate average minutes per hour
+    final Map<int, double> averages = {};
+    for (int i = 0; i < 24; i++) {
+      // For simplicity, we'll use total minutes divided by number of days with sessions
+      // This gives us average minutes focused during that hour across all days
+      final daysWithSessions = sessions
+          .map((s) => DateTime(s.start.year, s.start.month, s.start.day))
+          .toSet()
+          .length;
+      averages[i] = daysWithSessions > 0
+          ? totalMinutes[i]! / daysWithSessions
+          : 0.0;
+      // Clamp to 0-60 range
+      averages[i] = averages[i]!.clamp(0.0, 60.0);
+    }
+
+    return averages;
+  }
 
   // Factory constructor for default values (real user data)
   factory UserStatistics.initial() {
@@ -52,6 +122,42 @@ class UserStatistics {
           : 2.0 + (i % 5);
     }
 
+    // Generate sample focus sessions for the past 30 days
+    final List<FocusSession> sessions = [];
+    final random = math.Random(42); // Fixed seed for consistent initial data
+
+    for (int day = 0; day < 30; day++) {
+      final date = now.subtract(Duration(days: day));
+      // Generate 2-5 sessions per day
+      final sessionsPerDay = 2 + random.nextInt(4);
+
+      for (int s = 0; s < sessionsPerDay; s++) {
+        // Focus sessions mostly during work hours (8-18)
+        final hour = 8 + random.nextInt(11);
+        final minute = random.nextInt(60);
+        final sessionStart = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          hour,
+          minute,
+        );
+
+        // Session duration: 15-90 minutes
+        final durationMinutes = 15 + random.nextInt(76);
+
+        sessions.add(
+          FocusSession(
+            start: sessionStart,
+            duration: Duration(minutes: durationMinutes),
+          ),
+        );
+      }
+    }
+
+    // Calculate time of day performance from sessions
+    final timePerformance = _calculateTimeOfDayPerformance(sessions);
+
     return UserStatistics(
       dayStreak: 23,
       focusHours: 278,
@@ -61,8 +167,12 @@ class UserStatistics {
       nextBadge: 'Dutiful',
       nextBadgeProgress: '278/500 days',
       dailyActivityData: activityData,
+      focusSessions: sessions,
+      timeOfDayPerformance: timePerformance,
       isGeneratedData: false,
       generatedAt: null,
+      isPro: true,
+      fullName: 'Kristian Watson',
     );
   }
 
@@ -79,6 +189,34 @@ class UserStatistics {
     // Generate random rank percentage (Top 1% to Top 99%)
     final rankPercent = random.nextInt(99) + 1;
     final rankPercentage = 'Top $rankPercent%';
+
+    // Generate random full name
+    final firstNames = [
+      'Alex',
+      'Jordan',
+      'Taylor',
+      'Morgan',
+      'Casey',
+      'Riley',
+      'Quinn',
+      'Avery',
+      'Cameron',
+      'Sage',
+    ];
+    final lastNames = [
+      'Smith',
+      'Johnson',
+      'Williams',
+      'Brown',
+      'Jones',
+      'Garcia',
+      'Miller',
+      'Davis',
+      'Rodriguez',
+      'Martinez',
+    ];
+    final fullName =
+        '${firstNames[random.nextInt(firstNames.length)]} ${lastNames[random.nextInt(lastNames.length)]}';
 
     // Generate random activity data for the past 365 days
     final now = DateTime.now();
@@ -99,6 +237,41 @@ class UserStatistics {
     final currentBadgeProgress = '$currentBadgeDays/30 days';
     final nextBadgeProgress = '$focusHours/500 days';
 
+    // Generate random focus sessions for the past 60 days
+    final List<FocusSession> sessions = [];
+
+    for (int day = 0; day < 60; day++) {
+      final date = now.subtract(Duration(days: day));
+      // Generate 1-6 sessions per day
+      final sessionsPerDay = 1 + random.nextInt(6);
+
+      for (int s = 0; s < sessionsPerDay; s++) {
+        // Random hour with bias towards daytime (6-22)
+        final hour = 6 + random.nextInt(17);
+        final minute = random.nextInt(60);
+        final sessionStart = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          hour,
+          minute,
+        );
+
+        // Session duration: 10-120 minutes
+        final durationMinutes = 10 + random.nextInt(111);
+
+        sessions.add(
+          FocusSession(
+            start: sessionStart,
+            duration: Duration(minutes: durationMinutes),
+          ),
+        );
+      }
+    }
+
+    // Calculate time of day performance from sessions
+    final timePerformance = _calculateTimeOfDayPerformance(sessions);
+
     return UserStatistics(
       dayStreak: dayStreak,
       focusHours: focusHours,
@@ -108,8 +281,12 @@ class UserStatistics {
       nextBadge: 'Dutiful',
       nextBadgeProgress: nextBadgeProgress,
       dailyActivityData: activityData,
+      focusSessions: sessions,
+      timeOfDayPerformance: timePerformance,
       isGeneratedData: true,
       generatedAt: DateTime.now(),
+      isPro: true,
+      fullName: fullName,
     );
   }
 }
@@ -244,6 +421,68 @@ class AppSafeArea extends StatelessWidget {
   }
 }
 
+// Reusable Card Widget with consistent styling
+class AppCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsets? padding;
+  final EdgeInsets? margin;
+  final Color? backgroundColor;
+  final double? borderRadius;
+  final List<BoxShadow>? boxShadow;
+  final Border? border;
+
+  const AppCard({
+    super.key,
+    required this.child,
+    this.padding,
+    this.margin,
+    this.backgroundColor,
+    this.borderRadius,
+    this.boxShadow,
+    this.border,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: margin,
+      padding: padding ?? const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: backgroundColor ?? const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(borderRadius ?? 12),
+        boxShadow: boxShadow,
+        border: border,
+      ),
+      child: child,
+    );
+  }
+}
+
+// Global Pro Badge Widget
+class ProBadge extends StatelessWidget {
+  const ProBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Text(
+        'PRO',
+        style: TextStyle(
+          color: Color.fromARGB(255, 0, 0, 0),
+          fontSize: 10,
+          fontFamily: 'Inter',
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -370,7 +609,7 @@ class _MainScreenState extends State<MainScreen>
               ? Icon(
                   materialIcon,
                   color: isSelected ? Colors.white : const Color(0xFF6C6C70),
-                  size: 28,
+                  size: 35,
                 )
               : SvgPicture.asset(
                   iconPath,
@@ -405,9 +644,6 @@ class _MainScreenState extends State<MainScreen>
 
   @override
   Widget build(BuildContext context) {
-    final profileImageProvider = ProfileImageProvider.of(context);
-    final profileImagePath = profileImageProvider?.profileImagePath;
-
     return Scaffold(
       extendBody: true,
       body: _currentScreen,
@@ -491,11 +727,11 @@ class _MainScreenState extends State<MainScreen>
                             'Community',
                           ),
                           _buildNavItem(
-                            profileImagePath ?? 'assets/images/pfpplaceholder.JPG',
+                            '',
                             2,
                             'Profile',
-                            isProfilePicture: true,
-                            isCustomImage: profileImagePath != null,
+                            useMaterialIcon: true,
+                            materialIcon: Icons.person,
                           ),
                         ],
                       ),
@@ -961,61 +1197,171 @@ class _FocusScreenState extends State<FocusScreen>
                   ),
                 ),
 
-                // RAW logo - 16px from left, 50px from top
+                // Welcome message - 16px from left, 50px from top
                 Positioned(
                   left: 16,
                   top: 50,
-                  child: Image.asset(
-                    'assets/images/rawlogo.png',
-                    width: 70,
-                    height: 31,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      debugPrint('Error loading rawlogo.png: $error');
-                      return const Text(
-                        'RAW',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontFamily: 'Inter',
-                          fontWeight: FontWeight.w600,
-                        ),
+                  child: Builder(
+                    builder: (context) {
+                      final statisticsProvider = UserStatisticsProvider.of(
+                        context,
+                      );
+                      final statistics =
+                          statisticsProvider?.statistics ??
+                          UserStatistics.initial();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Welcome back,',
+                            style: TextStyle(
+                              color: Color(0xFF8E8E93),
+                              fontSize: 13,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          const SizedBox(height: 1),
+                          Text(
+                            statistics.fullName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       );
                     },
                   ),
                 ),
 
-                // Streak counter - 16px from right, 50px from top
+                // Profile picture and streak counter - 16px from right, 50px from top
                 Positioned(
                   right: 16,
                   top: 50,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ShaderMask(
-                        shaderCallback: (bounds) => const LinearGradient(
-                          colors: [Color(0xFFE68510), Colors.white],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ).createShader(bounds),
-                        child: const Text(
-                          '1',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontFamily: 'Inter',
-                            fontWeight: FontWeight.w600,
+                  child: Builder(
+                    builder: (context) {
+                      final profileImageProvider = ProfileImageProvider.of(
+                        context,
+                      );
+                      final profileImagePath =
+                          profileImageProvider?.profileImagePath;
+                      final statisticsProvider = UserStatisticsProvider.of(
+                        context,
+                      );
+                      final statistics =
+                          statisticsProvider?.statistics ??
+                          UserStatistics.initial();
+
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Streak counter with Pro badge
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ShaderMask(
+                                    shaderCallback: (bounds) =>
+                                        const LinearGradient(
+                                          colors: [
+                                            Color(0xFFE68510),
+                                            Colors.white,
+                                          ],
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                        ).createShader(bounds),
+                                    child: Text(
+                                      '${statistics.dayStreak}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 15,
+                                        fontFamily: 'Inter',
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 0),
+                                  Image.asset(
+                                    'assets/images/Icons/streakicon.png',
+                                    width: 20,
+                                    height: 20,
+                                    fit: BoxFit.contain,
+                                  ),
+                                ],
+                              ),
+                              if (statistics.isPro) ...[
+                                const SizedBox(height: 2),
+                                const ProBadge(),
+                              ],
+                            ],
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 1),
-                      Image.asset(
-                        'assets/images/Icons/streakicon.png',
-                        width: 25,
-                        height: 25,
-                        fit: BoxFit.contain,
-                      ),
-                    ],
+                          const SizedBox(width: 12),
+                          // Profile picture with status indicator
+                          Stack(
+                            children: [
+                              Container(
+                                width: 50,
+                                height: 50,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFF2C2C2E),
+                                ),
+                                child: ClipOval(
+                                  child: profileImagePath != null
+                                      ? Image.file(
+                                          File(profileImagePath),
+                                          fit: BoxFit.cover,
+                                          errorBuilder:
+                                              (context, error, stackTrace) {
+                                                return const Icon(
+                                                  Icons.person,
+                                                  color: Color(0xFF8E8E93),
+                                                  size: 28,
+                                                );
+                                              },
+                                        )
+                                      : const Icon(
+                                          Icons.person,
+                                          color: Color(0xFF8E8E93),
+                                          size: 28,
+                                        ),
+                                ),
+                              ),
+                              // Online/offline status indicator
+                              Positioned(
+                                right: 2,
+                                bottom: 2,
+                                child: Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color.fromARGB(
+                                      255,
+                                      96,
+                                      221,
+                                      101,
+                                    ), // Green for online, use Colors.grey for offline
+                                    border: Border.all(
+                                      color: const Color(0xFF1C1C1E),
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ],
@@ -1455,6 +1801,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _currentOffset =
       0; // Offset for navigation (0 = current period, 1 = previous period, etc.)
   int? _selectedDayIndex; // Index of selected bar in the graph
+  int? _selectedHourIndex; // Index of selected hour in the time of day graph
 
   final ScrollController _scrollController = ScrollController();
   double _lastScrollOffset = 0;
@@ -1770,7 +2117,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   width: 90,
                                   height: 90,
                                 )
-                              : const Icon(Icons.person, color: Colors.white, size: 45),
+                              : const Icon(
+                                  Icons.person,
+                                  color: Colors.white,
+                                  size: 45,
+                                ),
                         ),
                       ),
                     ),
@@ -1806,14 +2157,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     // Profile info (Name and rank) positioned next to profile picture
                     Positioned(
                       top: 180,
-                      left: 120,
+                      left: 112,
                       right: 16,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Serena',
-                            style: TextStyle(
+                          Text(
+                            statistics.fullName,
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 22,
                               fontFamily: 'Inter',
@@ -1857,7 +2208,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
 
-                const SizedBox(height: 80),
+                const SizedBox(height: 30),
 
                 // Rest of content with AppSafeArea padding
                 AppSafeArea(
@@ -1910,73 +2261,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: Container(
+                            child: SizedBox(
                               height: 140,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1C1C1E),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    '${statistics.dayStreak}',
-                                    style: const TextStyle(
-                                      color: Color(0xFFFFD700),
-                                      fontSize: 48,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w700,
+                              child: AppCard(
+                                borderRadius: 16,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      '${statistics.dayStreak}',
+                                      style: const TextStyle(
+                                        color: Color(0xFFFFD700),
+                                        fontSize: 48,
+                                        fontFamily: 'Inter',
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  const Text(
-                                    'DAY STREAK',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 1,
+                                    const SizedBox(height: 4),
+                                    const Text(
+                                      'DAY STREAK',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontFamily: 'Inter',
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 1,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Container(
+                            child: SizedBox(
                               height: 140,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1C1C1E),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    '${statistics.focusHours}',
-                                    style: const TextStyle(
-                                      color: Color(0xFFB794F6),
-                                      fontSize: 48,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w700,
+                              child: AppCard(
+                                borderRadius: 16,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      '${statistics.focusHours}',
+                                      style: const TextStyle(
+                                        color: Color(0xFFB794F6),
+                                        fontSize: 48,
+                                        fontFamily: 'Inter',
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  const Text(
-                                    'FOCUS HOURS',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 1,
+                                    const SizedBox(height: 4),
+                                    const Text(
+                                      'FOCUS HOURS',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontFamily: 'Inter',
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 1,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -1989,117 +2336,115 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: Container(
+                            child: SizedBox(
                               height: 60,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1C1C1E),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 36,
-                                    height: 36,
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFF2C2C2E),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      Icons.emoji_events,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        statistics.currentBadge,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 13,
-                                          fontFamily: 'Inter',
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                              child: AppCard(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF2C2C2E),
+                                        shape: BoxShape.circle,
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        statistics.currentBadgeProgress,
-                                        style: const TextStyle(
-                                          color: Color(0xFF8E8E93),
-                                          fontSize: 11,
-                                          fontFamily: 'Inter',
-                                          fontWeight: FontWeight.w400,
-                                        ),
+                                      child: const Icon(
+                                        Icons.emoji_events,
+                                        color: Colors.white,
+                                        size: 20,
                                       ),
-                                    ],
-                                  ),
-                                ],
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          statistics.currentBadge,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontFamily: 'Inter',
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          statistics.currentBadgeProgress,
+                                          style: const TextStyle(
+                                            color: Color(0xFF8E8E93),
+                                            fontSize: 11,
+                                            fontFamily: 'Inter',
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Container(
+                            child: SizedBox(
                               height: 60,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1C1C1E),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 36,
-                                    height: 36,
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFF2C2C2E),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      Icons.military_tech,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        statistics.nextBadge,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 13,
-                                          fontFamily: 'Inter',
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                              child: AppCard(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF2C2C2E),
+                                        shape: BoxShape.circle,
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        statistics.nextBadgeProgress,
-                                        style: const TextStyle(
-                                          color: Color(0xFF8E8E93),
-                                          fontSize: 11,
-                                          fontFamily: 'Inter',
-                                          fontWeight: FontWeight.w400,
-                                        ),
+                                      child: const Icon(
+                                        Icons.military_tech,
+                                        color: Colors.white,
+                                        size: 20,
                                       ),
-                                    ],
-                                  ),
-                                ],
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          statistics.nextBadge,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontFamily: 'Inter',
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          statistics.nextBadgeProgress,
+                                          style: const TextStyle(
+                                            color: Color(0xFF8E8E93),
+                                            fontSize: 11,
+                                            fontFamily: 'Inter',
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -2108,44 +2453,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                       const SizedBox(height: 24),
 
-                      // Activity Graph
-                      _buildActivityGraph(statistics),
-
-                      const SizedBox(height: 16),
-
-                      // Period Navigation
+                      // Period selection buttons and navigation
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          GestureDetector(
-                            onTap: _navigatePrevious,
-                            child: const Icon(
-                              Icons.chevron_left,
-                              color: Colors.white,
-                              size: 24,
-                            ),
+                          // Period navigation
+                          Row(
+                            children: [
+                              GestureDetector(
+                                onTap: _navigatePrevious,
+                                child: const Icon(
+                                  Icons.chevron_left,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _periodLabel,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: _navigateNext,
+                                child: Icon(
+                                  Icons.chevron_right,
+                                  color: _currentOffset > 0
+                                      ? Colors.white
+                                      : const Color(0xFF3A3A3C),
+                                  size: 24,
+                                ),
+                              ),
+                            ],
                           ),
-                          Text(
-                            _periodLabel,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontFamily: 'Inter',
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: _navigateNext,
-                            child: Icon(
-                              Icons.chevron_right,
-                              color: _currentOffset > 0
-                                  ? Colors.white
-                                  : const Color(0xFF3A3A3C),
-                              size: 24,
-                            ),
+                          // Period buttons
+                          Row(
+                            children: [
+                              _buildPeriodButton('Week', 0),
+                              const SizedBox(width: 8),
+                              _buildPeriodButton('Month', 1),
+                              const SizedBox(width: 8),
+                              _buildPeriodButton('Year', 2),
+                            ],
                           ),
                         ],
                       ),
+
+                      const SizedBox(height: 16),
+
+                      // Activity Graph
+                      _buildActivityGraph(statistics),
+
+                      const SizedBox(height: 24),
+
+                      // Time of Day Performance Graph
+                      _buildTimeOfDayGraph(statistics),
 
                       const SizedBox(height: 30),
                     ],
@@ -2307,67 +2674,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final minutes = ((displayValue - hours) * 60).round();
     final timeString = minutes > 0 ? '${hours}h ${minutes}m' : '${hours}h';
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
+    return SizedBox(
+      height: 290, // Fixed height to prevent bouncing when switching periods
+      child: AppCard(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Label showing average or selected day with period buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            // Label showing average or selected day
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayLabel,
-                      style: const TextStyle(
-                        color: Color(0xFF8E8E93),
-                        fontSize: 12,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      timeString,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+                Text(
+                  displayLabel,
+                  style: const TextStyle(
+                    color: Color(0xFF8E8E93),
+                    fontSize: 12,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
-                // Period selection buttons
-                Row(
-                  children: [
-                    _buildPeriodButton('Week', 0),
-                    const SizedBox(width: 8),
-                    _buildPeriodButton('Month', 1),
-                    const SizedBox(width: 8),
-                    _buildPeriodButton('Year', 2),
-                  ],
+                const SizedBox(height: 4),
+                Text(
+                  timeString,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            // Bar chart with Y-axis
+            // Bar chart with Y-axis (fixed height to prevent bouncing)
             SizedBox(
               height: 150,
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Bars container with horizontal lines
                   Expanded(
                     child: Stack(
+                      fit: StackFit.expand,
                       children: [
                         // Horizontal line at top (rounded-up max value position)
                         Positioned(
@@ -2595,6 +2944,136 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildTimeOfDayGraph(UserStatistics statistics) {
+    // Filter focus sessions based on selected period and offset
+    final now = DateTime.now();
+    final daysBack = _currentOffset * _daysInPeriod;
+    final startDate = now.subtract(Duration(days: daysBack + _daysInPeriod));
+    final endDate = now.subtract(Duration(days: daysBack));
+
+    // Filter sessions that fall within the selected period
+    final filteredSessions = statistics.focusSessions.where((session) {
+      final sessionDate = DateTime(
+        session.start.year,
+        session.start.month,
+        session.start.day,
+      );
+      final start = DateTime(startDate.year, startDate.month, startDate.day);
+      final end = DateTime(endDate.year, endDate.month, endDate.day);
+      return (sessionDate.isAfter(start) ||
+              sessionDate.isAtSameMomentAs(start)) &&
+          (sessionDate.isBefore(end) || sessionDate.isAtSameMomentAs(end));
+    }).toList();
+
+    // Calculate time of day performance from filtered sessions
+    final timePerformance = UserStatistics._calculateTimeOfDayPerformance(
+      filteredSessions,
+    );
+
+    // Convert to sorted list
+    final sortedData = List.generate(24, (i) => timePerformance[i] ?? 0.0);
+
+    // Y-axis max is always 60 minutes (maximum possible focus time in one hour)
+    final yAxisMax = 60.0;
+
+    // Find peak hour and its value
+    double maxMinutes = 0;
+    int peakHour = 10; // Default to 10:00
+    for (int i = 0; i < sortedData.length; i++) {
+      if (sortedData[i] > maxMinutes) {
+        maxMinutes = sortedData[i];
+        peakHour = i;
+      }
+    }
+
+    // Determine what to display
+    final String displayLabel;
+
+    if (_selectedHourIndex != null && _selectedHourIndex! < sortedData.length) {
+      // Show selected hour
+      final hour = _selectedHourIndex!;
+      final hourString = hour.toString().padLeft(2, '0');
+      displayLabel = 'Focus time at $hourString:00';
+    } else {
+      // Show peak hour
+      final hourString = peakHour.toString().padLeft(2, '0');
+      displayLabel = 'Most focused at $hourString:00 every day in general';
+    }
+
+    return AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Main title
+          const Text(
+            'Most Focused Period of the Day',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          // Subtitle
+          Text(
+            displayLabel,
+            style: const TextStyle(
+              color: Color(0xFF8E8E93),
+              fontSize: 12,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Line chart with tap detection
+          GestureDetector(
+            onTapDown: (details) {
+              _onTimeGraphTapped(details, sortedData);
+            },
+            child: SizedBox(
+              height: 150,
+              child: CustomPaint(
+                size: const Size(double.infinity, 150),
+                painter: LineChartPainter(
+                  data: sortedData,
+                  maxValue: yAxisMax,
+                  selectedHourIndex: _selectedHourIndex,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20), // Space for x-axis labels
+        ],
+      ),
+    );
+  }
+
+  void _onTimeGraphTapped(TapDownDetails details, List<double> data) {
+    // Calculate which hour was tapped
+    final leftPadding = 8.0;
+    final rightPadding = 18.0;
+    final graphWidth = details.localPosition.dx - leftPadding;
+    final totalWidth =
+        MediaQuery.of(context).size.width -
+        32 -
+        24 -
+        leftPadding -
+        rightPadding; // screen - padding - card - graph padding
+
+    if (graphWidth >= 0 && graphWidth <= totalWidth) {
+      final hourIndex = ((graphWidth / totalWidth) * 24).floor().clamp(0, 23);
+      setState(() {
+        if (_selectedHourIndex == hourIndex) {
+          _selectedHourIndex = null; // Deselect if tapping same hour
+        } else {
+          _selectedHourIndex = hourIndex;
+        }
+      });
+    }
+  }
+
   Widget _buildPeriodButton(String text, int index) {
     final isSelected = _selectedPeriod == index;
     return GestureDetector(
@@ -2658,6 +3137,193 @@ class DashedLinePainter extends CustomPainter {
   }
 }
 
+// Custom painter for line chart
+class LineChartPainter extends CustomPainter {
+  final List<double> data;
+  final double maxValue;
+  final int? selectedHourIndex;
+
+  LineChartPainter({
+    required this.data,
+    required this.maxValue,
+    this.selectedHourIndex,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (data.isEmpty || maxValue == 0) return;
+
+    final paint = Paint()
+      ..color = const Color.fromARGB(255, 190, 190, 190)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final fillPaint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset(0, 0),
+        Offset(0, size.height),
+        [
+          const Color.fromARGB(255, 150, 150, 150).withValues(alpha: 0.8),
+          const Color.fromARGB(255, 80, 80, 80).withValues(alpha: 0.3),
+          const Color.fromARGB(255, 50, 50, 50).withValues(alpha: 0.0),
+        ],
+        [0.0, 0.5, 1.0], // Color stops
+      )
+      ..style = PaintingStyle.fill;
+
+    final gridPaint = Paint()
+      ..color = const Color(0xFF3A3A3C).withValues(alpha: 0.3)
+      ..strokeWidth = 1;
+
+    final textPainter = TextPainter(
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    );
+
+    // Reserve space on the left and right for padding
+    final leftPadding = 8.0;
+    final rightPadding = 18.0;
+    final graphWidth = size.width - leftPadding - rightPadding;
+
+    // Draw horizontal grid lines (4 lines: 0, 20, 40, 60)
+    for (int i = 0; i <= 3; i++) {
+      final y = (size.height / 3) * i;
+      canvas.drawLine(
+        Offset(leftPadding, y),
+        Offset(leftPadding + graphWidth, y),
+        gridPaint,
+      );
+    }
+
+    // Calculate points
+    final points = <Offset>[];
+    final spacing = graphWidth / (data.length - 1);
+
+    for (int i = 0; i < data.length; i++) {
+      final x = leftPadding + (i * spacing);
+      final normalizedValue = data[i] / maxValue;
+      final y = size.height - (normalizedValue * size.height);
+      points.add(Offset(x, y));
+    }
+
+    // Draw filled area under the line
+    if (points.isNotEmpty) {
+      final path = Path();
+      path.moveTo(points.first.dx, size.height);
+      path.lineTo(points.first.dx, points.first.dy);
+
+      for (final point in points) {
+        path.lineTo(point.dx, point.dy);
+      }
+
+      path.lineTo(points.last.dx, size.height);
+      path.close();
+      canvas.drawPath(path, fillPaint);
+    }
+
+    // Draw the line
+    if (points.length > 1) {
+      final linePath = Path();
+      linePath.moveTo(points.first.dx, points.first.dy);
+
+      for (int i = 1; i < points.length; i++) {
+        linePath.lineTo(points[i].dx, points[i].dy);
+      }
+
+      canvas.drawPath(linePath, paint);
+    }
+
+    // Draw hour labels on X-axis (specific hours: 0, 6, 12, 18, 23)
+    final xAxisHours = [0, 6, 12, 18, 23];
+    for (int hour in xAxisHours) {
+      final x = leftPadding + (hour * spacing);
+      final hourString = hour.toString().padLeft(2, '0');
+      textPainter.text = TextSpan(
+        text: '$hourString:00',
+        style: const TextStyle(
+          color: Color(0xFF8E8E93),
+          fontSize: 9,
+          fontFamily: 'Inter',
+        ),
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(x - textPainter.width / 2, size.height + 10),
+      );
+    }
+
+    // Draw Y-axis labels (minutes: 60, 40, 20, 0) on the right side
+    final yLabels = ['60', '40', '20', '0'];
+    for (int i = 0; i <= 3; i++) {
+      final y = (size.height / 3) * i;
+      textPainter.text = TextSpan(
+        text: yLabels[i],
+        style: const TextStyle(
+          color: Color(0xFF8E8E93),
+          fontSize: 9,
+          fontFamily: 'Inter',
+        ),
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(size.width - textPainter.width, y - textPainter.height / 2),
+      );
+    }
+
+    // Draw vertical indicator line for selected hour
+    if (selectedHourIndex != null && selectedHourIndex! < data.length) {
+      final x = leftPadding + (selectedHourIndex! * spacing);
+
+      // Draw dashed vertical line
+      final indicatorPaint = Paint()
+        ..color = const Color(0xFF8E8E93).withValues(alpha: 0.5)
+        ..strokeWidth = 1
+        ..style = PaintingStyle.stroke;
+
+      // Draw dashed line from top to bottom
+      double dashHeight = 4;
+      double dashSpace = 4;
+      double startY = 0;
+
+      while (startY < size.height) {
+        canvas.drawLine(
+          Offset(x, startY),
+          Offset(x, startY + dashHeight),
+          indicatorPaint,
+        );
+        startY += dashHeight + dashSpace;
+      }
+
+      // Draw black circle at the data point
+      final normalizedValue = data[selectedHourIndex!] / maxValue;
+      final y = size.height - (normalizedValue * size.height);
+
+      // Draw outer black circle
+      final blackCirclePaint = Paint()
+        ..color = Color.fromARGB(255, 102, 102, 105)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(x, y), 4.5, blackCirclePaint);
+
+      // Draw inner white circle
+      final whiteCirclePaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(x, y), 2.5, whiteCirclePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(LineChartPainter oldDelegate) {
+    return oldDelegate.data != data ||
+        oldDelegate.maxValue != maxValue ||
+        oldDelegate.selectedHourIndex != selectedHourIndex;
+  }
+}
+
 // Settings Screen
 // Account Settings Screen
 class AccountSettingsScreen extends StatefulWidget {
@@ -2695,7 +3361,10 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 ),
                 const SizedBox(height: 20),
                 ListTile(
-                  leading: const Icon(Icons.photo_library, color: Color(0xFF06B6D4)),
+                  leading: const Icon(
+                    Icons.photo_library,
+                    color: Color(0xFF06B6D4),
+                  ),
                   title: const Text(
                     'Gallery',
                     style: TextStyle(color: Colors.white),
@@ -2703,7 +3372,10 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                   onTap: () => Navigator.pop(context, ImageSource.gallery),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.camera_alt, color: Color(0xFF06B6D4)),
+                  leading: const Icon(
+                    Icons.camera_alt,
+                    color: Color(0xFF06B6D4),
+                  ),
                   title: const Text(
                     'Camera',
                     style: TextStyle(color: Colors.white),
@@ -2776,7 +3448,10 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 ),
                 const SizedBox(height: 20),
                 ListTile(
-                  leading: const Icon(Icons.photo_library, color: Color(0xFFEC4899)),
+                  leading: const Icon(
+                    Icons.photo_library,
+                    color: Color(0xFFEC4899),
+                  ),
                   title: const Text(
                     'Gallery',
                     style: TextStyle(color: Colors.white),
@@ -2784,7 +3459,10 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                   onTap: () => Navigator.pop(context, ImageSource.gallery),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.camera_alt, color: Color(0xFFEC4899)),
+                  leading: const Icon(
+                    Icons.camera_alt,
+                    color: Color(0xFFEC4899),
+                  ),
                   title: const Text(
                     'Camera',
                     style: TextStyle(color: Colors.white),
@@ -2842,13 +3520,8 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AppCard(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1E),
-          borderRadius: BorderRadius.circular(12),
-        ),
         child: Row(
           children: [
             Container(
@@ -2893,11 +3566,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 ],
               ),
             ),
-            const Icon(
-              Icons.chevron_right,
-              color: Color(0xFF8E8E93),
-              size: 20,
-            ),
+            const Icon(Icons.chevron_right, color: Color(0xFF8E8E93), size: 20),
           ],
         ),
       ),
@@ -3085,13 +3754,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AppCard(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1E),
-          borderRadius: BorderRadius.circular(12),
-        ),
         child: Row(
           children: [
             Container(
@@ -3241,16 +3905,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               // Active Generated Data Display (only if data is generated)
               if (statistics.isGeneratedData && statistics.generatedAt != null)
-                Container(
+                AppCard(
                   margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1C1C1E),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: const Color(0xFFFF9500).withValues(alpha: 0.3),
-                      width: 1,
-                    ),
+                  border: Border.all(
+                    color: const Color(0xFFFF9500).withValues(alpha: 0.3),
+                    width: 1,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
