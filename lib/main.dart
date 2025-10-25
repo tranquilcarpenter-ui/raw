@@ -1,295 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
+// Firebase types are accessed via `FirebaseService` where needed
+import 'firebase_service.dart';
+import 'auth_provider.dart';
+import 'auth_screen.dart';
+import 'test_users_screen.dart';
+import 'user_data.dart';
+import 'user_data_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-// Focus Session Data Model
-class FocusSession {
-  DateTime start;
-  Duration duration;
-
-  FocusSession({required this.start, required this.duration});
-}
-
-// User Statistics Data Model
-class UserStatistics {
-  int dayStreak;
-  int focusHours;
-  String rankPercentage;
-  String currentBadge;
-  String currentBadgeProgress;
-  String nextBadge;
-  String nextBadgeProgress;
-  Map<DateTime, double> dailyActivityData; // Date -> hours focused
-  List<FocusSession> focusSessions; // List of all focus sessions
-  Map<int, double>?
-  timeOfDayPerformance; // Hour (0-23) -> average minutes focused during that hour
-  bool isGeneratedData; // Flag to indicate if data is test data
-  DateTime? generatedAt; // Timestamp when data was generated
-  bool isPro; // Pro user status
-  String fullName; // User's full name
-
-  UserStatistics({
-    required this.dayStreak,
-    required this.focusHours,
-    required this.rankPercentage,
-    required this.currentBadge,
-    required this.currentBadgeProgress,
-    required this.nextBadge,
-    required this.nextBadgeProgress,
-    required this.dailyActivityData,
-    required this.focusSessions,
-    this.timeOfDayPerformance,
-    this.isGeneratedData = false,
-    this.generatedAt,
-    this.isPro = true, // Default to true for now
-    this.fullName = 'Kristian Watson', // Default name
-  });
-
-  // Calculate time of day performance from focus sessions
-  static Map<int, double> _calculateTimeOfDayPerformance(
-    List<FocusSession> sessions,
-  ) {
-    // Initialize hour counters: total minutes focused and session count for each hour
-    final Map<int, double> totalMinutes = {};
-    final Map<int, int> sessionCounts = {};
-
-    for (int i = 0; i < 24; i++) {
-      totalMinutes[i] = 0.0;
-      sessionCounts[i] = 0;
-    }
-
-    // Process each focus session
-    for (final session in sessions) {
-      DateTime currentTime = session.start;
-      int remainingMinutes = session.duration.inMinutes;
-
-      // Distribute the session across hours
-      while (remainingMinutes > 0) {
-        final hour = currentTime.hour;
-        final minutesUntilNextHour = 60 - currentTime.minute;
-        final minutesInThisHour = remainingMinutes < minutesUntilNextHour
-            ? remainingMinutes
-            : minutesUntilNextHour;
-
-        totalMinutes[hour] = (totalMinutes[hour] ?? 0.0) + minutesInThisHour;
-        sessionCounts[hour] = (sessionCounts[hour] ?? 0) + 1;
-
-        remainingMinutes -= minutesInThisHour;
-        currentTime = currentTime.add(Duration(minutes: minutesInThisHour));
-      }
-    }
-
-    // Calculate average minutes per hour
-    final Map<int, double> averages = {};
-    for (int i = 0; i < 24; i++) {
-      // For simplicity, we'll use total minutes divided by number of days with sessions
-      // This gives us average minutes focused during that hour across all days
-      final daysWithSessions = sessions
-          .map((s) => DateTime(s.start.year, s.start.month, s.start.day))
-          .toSet()
-          .length;
-      averages[i] = daysWithSessions > 0
-          ? totalMinutes[i]! / daysWithSessions
-          : 0.0;
-      // Clamp to 0-60 range
-      averages[i] = averages[i]!.clamp(0.0, 60.0);
-    }
-
-    return averages;
-  }
-
-  // Factory constructor for default values (real user data)
-  factory UserStatistics.initial() {
-    // Generate initial activity data for the past 365 days
-    final now = DateTime.now();
-    final Map<DateTime, double> activityData = {};
-
-    for (int i = 0; i < 365; i++) {
-      final date = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ).subtract(Duration(days: i));
-      // Sample data: varying activity levels
-      activityData[date] = (i % 7 == 0 || i % 7 == 6)
-          ? 1.0 + (i % 3)
-          : 2.0 + (i % 5);
-    }
-
-    // Generate sample focus sessions for the past 30 days
-    final List<FocusSession> sessions = [];
-    final random = math.Random(42); // Fixed seed for consistent initial data
-
-    for (int day = 0; day < 30; day++) {
-      final date = now.subtract(Duration(days: day));
-      // Generate 2-5 sessions per day
-      final sessionsPerDay = 2 + random.nextInt(4);
-
-      for (int s = 0; s < sessionsPerDay; s++) {
-        // Focus sessions mostly during work hours (8-18)
-        final hour = 8 + random.nextInt(11);
-        final minute = random.nextInt(60);
-        final sessionStart = DateTime(
-          date.year,
-          date.month,
-          date.day,
-          hour,
-          minute,
-        );
-
-        // Session duration: 15-90 minutes
-        final durationMinutes = 15 + random.nextInt(76);
-
-        sessions.add(
-          FocusSession(
-            start: sessionStart,
-            duration: Duration(minutes: durationMinutes),
-          ),
-        );
-      }
-    }
-
-    // Calculate time of day performance from sessions
-    final timePerformance = _calculateTimeOfDayPerformance(sessions);
-
-    return UserStatistics(
-      dayStreak: 23,
-      focusHours: 278,
-      rankPercentage: 'Top 35%',
-      currentBadge: 'Radiant',
-      currentBadgeProgress: '23/30 days',
-      nextBadge: 'Dutiful',
-      nextBadgeProgress: '278/500 days',
-      dailyActivityData: activityData,
-      focusSessions: sessions,
-      timeOfDayPerformance: timePerformance,
-      isGeneratedData: false,
-      generatedAt: null,
-      isPro: true,
-      fullName: 'Kristian Watson',
-    );
-  }
-
-  // Factory constructor to generate random test data
-  factory UserStatistics.random() {
-    final random = math.Random();
-
-    // Generate random day streak (1-365)
-    final dayStreak = random.nextInt(365) + 1;
-
-    // Generate random focus hours (50-2000)
-    final focusHours = random.nextInt(1950) + 50;
-
-    // Generate random rank percentage (Top 1% to Top 99%)
-    final rankPercent = random.nextInt(99) + 1;
-    final rankPercentage = 'Top $rankPercent%';
-
-    // Generate random full name
-    final firstNames = [
-      'Alex',
-      'Jordan',
-      'Taylor',
-      'Morgan',
-      'Casey',
-      'Riley',
-      'Quinn',
-      'Avery',
-      'Cameron',
-      'Sage',
-    ];
-    final lastNames = [
-      'Smith',
-      'Johnson',
-      'Williams',
-      'Brown',
-      'Jones',
-      'Garcia',
-      'Miller',
-      'Davis',
-      'Rodriguez',
-      'Martinez',
-    ];
-    final fullName =
-        '${firstNames[random.nextInt(firstNames.length)]} ${lastNames[random.nextInt(lastNames.length)]}';
-
-    // Generate random activity data for the past 365 days
-    final now = DateTime.now();
-    final Map<DateTime, double> activityData = {};
-
-    for (int i = 0; i < 365; i++) {
-      final date = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ).subtract(Duration(days: i));
-      // Random hours between 0 and 8
-      activityData[date] = random.nextDouble() * 8;
-    }
-
-    // Generate badge progress
-    final currentBadgeDays = dayStreak % 30;
-    final currentBadgeProgress = '$currentBadgeDays/30 days';
-    final nextBadgeProgress = '$focusHours/500 days';
-
-    // Generate random focus sessions for the past 60 days
-    final List<FocusSession> sessions = [];
-
-    for (int day = 0; day < 60; day++) {
-      final date = now.subtract(Duration(days: day));
-      // Generate 1-6 sessions per day
-      final sessionsPerDay = 1 + random.nextInt(6);
-
-      for (int s = 0; s < sessionsPerDay; s++) {
-        // Random hour with bias towards daytime (6-22)
-        final hour = 6 + random.nextInt(17);
-        final minute = random.nextInt(60);
-        final sessionStart = DateTime(
-          date.year,
-          date.month,
-          date.day,
-          hour,
-          minute,
-        );
-
-        // Session duration: 10-120 minutes
-        final durationMinutes = 10 + random.nextInt(111);
-
-        sessions.add(
-          FocusSession(
-            start: sessionStart,
-            duration: Duration(minutes: durationMinutes),
-          ),
-        );
-      }
-    }
-
-    // Calculate time of day performance from sessions
-    final timePerformance = _calculateTimeOfDayPerformance(sessions);
-
-    return UserStatistics(
-      dayStreak: dayStreak,
-      focusHours: focusHours,
-      rankPercentage: rankPercentage,
-      currentBadge: 'Radiant',
-      currentBadgeProgress: currentBadgeProgress,
-      nextBadge: 'Dutiful',
-      nextBadgeProgress: nextBadgeProgress,
-      dailyActivityData: activityData,
-      focusSessions: sessions,
-      timeOfDayPerformance: timePerformance,
-      isGeneratedData: true,
-      generatedAt: DateTime.now(),
-      isPro: true,
-      fullName: fullName,
-    );
-  }
-}
+// Firebase initialization is managed by `FirebaseService` singleton.
 
 // Profile Image Provider
 class ProfileImageProvider extends InheritedWidget {
@@ -318,29 +45,63 @@ class ProfileImageProvider extends InheritedWidget {
   }
 }
 
-// Global state management for user statistics
-class UserStatisticsProvider extends InheritedWidget {
-  final UserStatistics statistics;
-  final Function(UserStatistics) updateStatistics;
+// Global state management for user data
+class UserDataProvider extends InheritedWidget {
+  final UserData userData;
+  final Function(UserData) updateUserData;
 
-  const UserStatisticsProvider({
+  const UserDataProvider({
     super.key,
-    required this.statistics,
-    required this.updateStatistics,
+    required this.userData,
+    required this.updateUserData,
     required super.child,
   });
 
-  static UserStatisticsProvider? of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<UserStatisticsProvider>();
+  static UserDataProvider? of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<UserDataProvider>();
   }
 
   @override
-  bool updateShouldNotify(UserStatisticsProvider oldWidget) {
-    return statistics != oldWidget.statistics;
+  bool updateShouldNotify(UserDataProvider oldWidget) {
+    return userData != oldWidget.userData;
   }
 }
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase via the centralized singleton service.
+  // This ensures a single initialization path and avoids race conditions
+  // that can occur when multiple parts of the app access Firebase directly
+  // during startup or when using the VS Code debugger.
+  await FirebaseService.instance.initialize();
+
+  // Connect to Firebase emulators (only in debug mode)
+  // NOTE: Firestore emulator requires Java. If you don't have Java installed,
+  // comment out the Firestore emulator block below to use production Firestore
+  if (kDebugMode) {
+    final host = defaultTargetPlatform == TargetPlatform.android
+        ? '10.0.2.2'
+        : 'localhost';
+
+    // Auth emulator
+    try {
+      final auth = FirebaseService.instance.auth;
+      await auth.useAuthEmulator(host, 9099);
+      debugPrint('Connected to Auth emulator at $host:9099');
+    } catch (_) {
+      // Already connected to emulator, ignore
+    }
+
+    // Firestore emulator
+    try {
+      UserDataService.instance.useEmulator(host, 8080);
+      debugPrint('Connected to Firestore emulator at $host:8080');
+    } catch (_) {
+      // Already connected to emulator, ignore
+    }
+  }
+
   runApp(const FocusFlowApp());
 }
 
@@ -352,20 +113,79 @@ class FocusFlowApp extends StatefulWidget {
 }
 
 class _FocusFlowAppState extends State<FocusFlowApp> {
-  late UserStatistics _statistics;
+  late UserData _userData;
   String? _profileImagePath;
   String? _bannerImagePath;
+  String? _currentUserId;
 
   @override
   void initState() {
     super.initState();
-    _statistics = UserStatistics.initial();
+    _userData = UserData.newUser(email: 'guest@example.com', fullName: 'User');
+    _listenToAuthChanges();
   }
 
-  void _updateStatistics(UserStatistics newStatistics) {
-    setState(() {
-      _statistics = newStatistics;
+  void _listenToAuthChanges() {
+    // Listen for authentication state changes
+    FirebaseService.instance.auth.authStateChanges().listen((user) async {
+      if (user != null && user.uid != _currentUserId) {
+        // User logged in or changed - load their data
+        debugPrint('👤 User logged in: ${user.uid}');
+        debugPrint('   Email: ${user.email}');
+        _currentUserId = user.uid;
+
+        // Load user data from Firestore
+        final userData = await UserDataService.instance.loadUserData(user.uid);
+
+        // If no data exists (shouldn't happen with new flow), create it
+        if (userData == null) {
+          debugPrint('⚠️ No data found for user, creating new user data');
+          final newUserData = UserData.newUser(
+            email: user.email ?? 'user@example.com',
+            fullName: user.email?.split('@')[0] ?? 'User',
+          );
+          await UserDataService.instance.saveUserData(user.uid, newUserData);
+          setState(() {
+            _userData = newUserData;
+          });
+        } else {
+          debugPrint(
+            '📊 Loaded data: ${userData.fullName}, Streak=${userData.dayStreak}, Hours=${userData.focusHours}',
+          );
+          setState(() {
+            _userData = userData;
+          });
+        }
+      } else if (user == null) {
+        // User logged out - reset to default data
+        debugPrint('👋 User logged out');
+        _currentUserId = null;
+        setState(() {
+          _userData = UserData.newUser(email: 'guest@example.com', fullName: 'User');
+        });
+      }
     });
+  }
+
+  void _updateUserData(UserData newUserData) async {
+    setState(() {
+      _userData = newUserData;
+    });
+
+    // Save to Firestore if user is logged in
+    final user = FirebaseService.instance.auth.currentUser;
+    if (user != null) {
+      try {
+        debugPrint(
+          '🔄 Update requested - saving to Firestore for user: ${user.uid}',
+        );
+        await UserDataService.instance.saveUserData(user.uid, newUserData);
+      } catch (e) {
+        debugPrint('❌ Error saving user data: $e');
+      }
+    } else {
+      debugPrint('⚠️ Cannot save data - no user logged in');
+    }
   }
 
   void _updateProfileImage(String? imagePath) {
@@ -382,23 +202,47 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ProfileImageProvider(
-      profileImagePath: _profileImagePath,
-      bannerImagePath: _bannerImagePath,
-      updateProfileImage: _updateProfileImage,
-      updateBannerImage: _updateBannerImage,
-      child: UserStatisticsProvider(
-        statistics: _statistics,
-        updateStatistics: _updateStatistics,
-        child: MaterialApp(
-          title: 'RAW',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            scaffoldBackgroundColor: const Color(0xFF000000),
-            primaryColor: const Color(0xFFFFFFFF),
-            fontFamily: 'Inter',
+    return AuthStateProvider(
+      child: ProfileImageProvider(
+        profileImagePath: _profileImagePath,
+        bannerImagePath: _bannerImagePath,
+        updateProfileImage: _updateProfileImage,
+        updateBannerImage: _updateBannerImage,
+        child: UserDataProvider(
+          userData: _userData,
+          updateUserData: _updateUserData,
+          child: MaterialApp(
+            title: 'RAW',
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              scaffoldBackgroundColor: const Color(0xFF000000),
+              primaryColor: const Color(0xFFFFFFFF),
+              fontFamily: 'Inter',
+            ),
+            home: Builder(
+              builder: (context) {
+                final authProvider = AuthProvider.of(context);
+
+                // Show loading screen while checking auth state
+                if (authProvider?.isLoading ?? true) {
+                  return const Scaffold(
+                    backgroundColor: Color(0xFF000000),
+                    body: Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                  );
+                }
+
+                // Show auth screen if not logged in
+                if (authProvider?.user == null) {
+                  return const AuthScreen();
+                }
+
+                // User is logged in - show main app
+                return const MainScreen();
+              },
+            ),
           ),
-          home: const MainScreen(),
         ),
       ),
     );
@@ -1201,14 +1045,13 @@ class _FocusScreenState extends State<FocusScreen>
                 Positioned(
                   left: 16,
                   top: 50,
+                  right: 120, // Leave space for profile picture on the right
                   child: Builder(
                     builder: (context) {
-                      final statisticsProvider = UserStatisticsProvider.of(
-                        context,
-                      );
-                      final statistics =
-                          statisticsProvider?.statistics ??
-                          UserStatistics.initial();
+                      final userDataProvider = UserDataProvider.of(context);
+                      final userData =
+                          userDataProvider?.userData ??
+                          UserData.newUser(email: 'guest@example.com', fullName: 'User');
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1224,13 +1067,15 @@ class _FocusScreenState extends State<FocusScreen>
                           ),
                           const SizedBox(height: 1),
                           Text(
-                            statistics.fullName,
+                            userData.fullName,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 16,
                               fontFamily: 'Inter',
                               fontWeight: FontWeight.w600,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       );
@@ -1249,12 +1094,10 @@ class _FocusScreenState extends State<FocusScreen>
                       );
                       final profileImagePath =
                           profileImageProvider?.profileImagePath;
-                      final statisticsProvider = UserStatisticsProvider.of(
-                        context,
-                      );
-                      final statistics =
-                          statisticsProvider?.statistics ??
-                          UserStatistics.initial();
+                      final userDataProvider = UserDataProvider.of(context);
+                      final userData =
+                          userDataProvider?.userData ??
+                          UserData.newUser(email: 'guest@example.com', fullName: 'User');
 
                       return Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1279,7 +1122,7 @@ class _FocusScreenState extends State<FocusScreen>
                                           end: Alignment.bottomCenter,
                                         ).createShader(bounds),
                                     child: Text(
-                                      '${statistics.dayStreak}',
+                                      '${userData.dayStreak}',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 15,
@@ -1297,7 +1140,7 @@ class _FocusScreenState extends State<FocusScreen>
                                   ),
                                 ],
                               ),
-                              if (statistics.isPro) ...[
+                              if (userData.isPro) ...[
                                 const SizedBox(height: 2),
                                 const ProBadge(),
                               ],
@@ -1985,9 +1828,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final statisticsProvider = UserStatisticsProvider.of(context);
-    final statistics =
-        statisticsProvider?.statistics ?? UserStatistics.initial();
+    final userDataProvider = UserDataProvider.of(context);
+    final userData =
+        userDataProvider?.userData ?? UserData.newUser(email: 'guest@example.com', fullName: 'User');
 
     final profileImageProvider = ProfileImageProvider.of(context);
     final profileImagePath = profileImageProvider?.profileImagePath;
@@ -2163,13 +2006,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            statistics.fullName,
+                            userData.fullName,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 22,
                               fontFamily: 'Inter',
                               fontWeight: FontWeight.w700,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           Container(
@@ -2191,7 +2036,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  statistics.rankPercentage,
+                                  userData.rankPercentage,
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 11,
@@ -2222,34 +2067,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: List.generate(7, (index) {
-                          final colors = [
-                            [const Color(0xFF6B46C1), const Color(0xFF3B21A8)],
-                            [const Color(0xFF06B6D4), const Color(0xFF0891B2)],
-                            [const Color(0xFFDC2626), const Color(0xFF991B1B)],
-                            [const Color(0xFF84CC16), const Color(0xFF65A30D)],
-                            [const Color(0xFF0EA5E9), const Color(0xFF0284C7)],
-                            [const Color(0xFFF97316), const Color(0xFFEA580C)],
-                            [const Color(0xFF10B981), const Color(0xFF059669)],
-                          ];
-                          return Container(
+                          return SizedBox(
                             width: 42,
                             height: 42,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: colors[index],
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                              ),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: colors[index][0].withValues(
-                                    alpha: 0.4,
-                                  ),
-                                  blurRadius: 8,
-                                  spreadRadius: 1,
-                                ),
-                              ],
+                            child: Image.asset(
+                              'assets/images/stone.png',
+                              fit: BoxFit.contain,
                             ),
                           );
                         }),
@@ -2269,7 +2092,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      '${statistics.dayStreak}',
+                                      '${userData.dayStreak}',
                                       style: const TextStyle(
                                         color: Color(0xFFFFD700),
                                         fontSize: 48,
@@ -2303,7 +2126,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      '${statistics.focusHours}',
+                                      '${userData.focusHours}',
                                       style: const TextStyle(
                                         color: Color(0xFFB794F6),
                                         fontSize: 48,
@@ -2366,7 +2189,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           MainAxisAlignment.center,
                                       children: [
                                         Text(
-                                          statistics.currentBadge,
+                                          userData.currentBadge,
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 13,
@@ -2376,7 +2199,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          statistics.currentBadgeProgress,
+                                          userData.currentBadgeProgress,
                                           style: const TextStyle(
                                             color: Color(0xFF8E8E93),
                                             fontSize: 11,
@@ -2423,7 +2246,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           MainAxisAlignment.center,
                                       children: [
                                         Text(
-                                          statistics.nextBadge,
+                                          userData.nextBadge,
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 13,
@@ -2433,7 +2256,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          statistics.nextBadgeProgress,
+                                          userData.nextBadgeProgress,
                                           style: const TextStyle(
                                             color: Color(0xFF8E8E93),
                                             fontSize: 11,
@@ -2507,12 +2330,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 16),
 
                       // Activity Graph
-                      _buildActivityGraph(statistics),
+                      _buildActivityGraph(userData),
 
                       const SizedBox(height: 24),
 
                       // Time of Day Performance Graph
-                      _buildTimeOfDayGraph(statistics),
+                      _buildTimeOfDayGraph(userData),
 
                       const SizedBox(height: 30),
                     ],
@@ -2526,7 +2349,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildActivityGraph(UserStatistics statistics) {
+  Widget _buildActivityGraph(UserData userData) {
     final now = DateTime.now();
     final daysBack = _currentOffset * _daysInPeriod;
 
@@ -2550,7 +2373,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Get data for Monday through Sunday
       for (int i = 0; i < 7; i++) {
         final date = monday.add(Duration(days: i));
-        final hours = statistics.dailyActivityData[date] ?? 0.0;
+        final hours = userData.dailyActivityData[date] ?? 0.0;
         periodData.add(hours);
         labels.add(weekDays[i]);
       }
@@ -2562,7 +2385,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           now.month,
           now.day,
         ).subtract(Duration(days: daysBack + i));
-        final hours = statistics.dailyActivityData[date] ?? 0.0;
+        final hours = userData.dailyActivityData[date] ?? 0.0;
         periodData.add(hours);
       }
       // Month: Show every 5th day or fewer labels
@@ -2618,7 +2441,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Only include if the date is not in the future
           if (date.isBefore(now) ||
               date.isAtSameMomentAs(DateTime(now.year, now.month, now.day))) {
-            monthTotal += statistics.dailyActivityData[date] ?? 0.0;
+            monthTotal += userData.dailyActivityData[date] ?? 0.0;
           }
         }
 
@@ -2944,7 +2767,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildTimeOfDayGraph(UserStatistics statistics) {
+  Widget _buildTimeOfDayGraph(UserData userData) {
     // Filter focus sessions based on selected period and offset
     final now = DateTime.now();
     final daysBack = _currentOffset * _daysInPeriod;
@@ -2952,7 +2775,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final endDate = now.subtract(Duration(days: daysBack));
 
     // Filter sessions that fall within the selected period
-    final filteredSessions = statistics.focusSessions.where((session) {
+    final filteredSessions = userData.focusSessions.where((session) {
       final sessionDate = DateTime(
         session.start.year,
         session.start.month,
@@ -2966,7 +2789,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }).toList();
 
     // Calculate time of day performance from filtered sessions
-    final timePerformance = UserStatistics._calculateTimeOfDayPerformance(
+    final timePerformance = UserData.calculateTimeOfDayPerformance(
       filteredSessions,
     );
 
@@ -3336,6 +3159,139 @@ class AccountSettingsScreen extends StatefulWidget {
 class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   final ImagePicker _picker = ImagePicker();
 
+  Future<void> _logout() async {
+    try {
+      // Show confirmation dialog
+      final shouldLogout = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1C1C1E),
+          title: const Text('Logout', style: TextStyle(color: Colors.white)),
+          content: const Text(
+            'Are you sure you want to logout?',
+            style: TextStyle(color: Color(0xFF8E8E93)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Color(0xFF8E8E93)),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text(
+                'Logout',
+                style: TextStyle(color: Color(0xFFDC2626)),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldLogout == true && mounted) {
+        // Sign out from Firebase
+        await FirebaseService.instance.auth.signOut();
+
+        if (mounted) {
+          // Pop all screens and return to root (auth screen will show automatically)
+          Navigator.popUntil(context, (route) => route.isFirst);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error logging out: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showChangeUsernameDialog() async {
+    final userDataProvider = UserDataProvider.of(context);
+    if (userDataProvider == null) return;
+
+    final currentName = userDataProvider.userData.fullName;
+    final controller = TextEditingController(text: currentName);
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text(
+          'Change Username',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'Username',
+            labelStyle: TextStyle(color: Color(0xFF8E8E93)),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF8E8E93)),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF8B5CF6)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Color(0xFF8E8E93)),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              final trimmedName = controller.text.trim();
+              if (trimmedName.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Username cannot be empty'),
+                    backgroundColor: Color(0xFFDC2626),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(context, trimmedName);
+            },
+            child: const Text(
+              'Save',
+              style: TextStyle(color: Color(0xFF8B5CF6)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (newName != null && newName != currentName && mounted) {
+      // Update the user data with new full name
+      final updatedUserData = userDataProvider.userData.copyWith(
+        fullName: newName,
+        updatedAt: DateTime.now(),
+      );
+      userDataProvider.updateUserData(updatedUserData);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Username updated successfully'),
+          backgroundColor: Color(0xFF00C853),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   Future<void> _pickProfilePicture() async {
     try {
       // Show bottom sheet to choose between camera and gallery
@@ -3652,15 +3608,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 subtitle: 'Change your username',
                 icon: Icons.person,
                 iconColor: const Color(0xFF8B5CF6),
-                onTap: () {
-                  // TODO: Implement username change
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Username change coming soon!'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                },
+                onTap: _showChangeUsernameDialog,
               ),
 
               // Email
@@ -3679,6 +3627,30 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                     ),
                   );
                 },
+              ),
+
+              const SizedBox(height: 24),
+
+              const Text(
+                'Session',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Logout
+              _buildSettingsItem(
+                context: context,
+                title: 'Logout',
+                subtitle: 'Sign out of your account',
+                icon: Icons.logout,
+                iconColor: const Color(0xFFDC2626),
+                onTap: _logout,
               ),
             ],
           ),
@@ -3699,7 +3671,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isGenerating = false;
 
   void _generateRandomData() {
-    final statisticsProvider = UserStatisticsProvider.of(context);
+    final statisticsProvider = UserDataProvider.of(context);
 
     if (statisticsProvider == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3718,11 +3690,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     // Simulate data generation with delay
     Future.delayed(const Duration(seconds: 2), () {
-      // Generate random statistics
-      final newStatistics = UserStatistics.random();
+      // Generate random statistics while preserving profile data
+      final currentUserData = statisticsProvider.userData;
+      final newUserData = currentUserData.withRandomStatistics();
 
       // Update the global state
-      statisticsProvider.updateStatistics(newStatistics);
+      statisticsProvider.updateUserData(newUserData);
 
       setState(() {
         _isGenerating = false;
@@ -3734,8 +3707,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SnackBar(
             content: Text(
               'Random data generated!\n'
-              'Day Streak: ${newStatistics.dayStreak}, '
-              'Focus Hours: ${newStatistics.focusHours}',
+              'Day Streak: ${newUserData.dayStreak}, '
+              'Focus Hours: ${newUserData.focusHours}',
             ),
             backgroundColor: const Color(0xFF00C853),
             duration: const Duration(seconds: 3),
@@ -3809,9 +3782,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final statisticsProvider = UserStatisticsProvider.of(context);
-    final statistics =
-        statisticsProvider?.statistics ?? UserStatistics.initial();
+    final userDataProvider = UserDataProvider.of(context);
+    final userData =
+        userDataProvider?.userData ?? UserData.newUser(email: 'guest@example.com', fullName: 'User');
 
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
@@ -3904,7 +3877,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 12),
 
               // Active Generated Data Display (only if data is generated)
-              if (statistics.isGeneratedData && statistics.generatedAt != null)
+              if (userData.isGeneratedData && userData.generatedAt != null)
                 AppCard(
                   margin: const EdgeInsets.only(bottom: 12),
                   border: Border.all(
@@ -3941,7 +3914,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const Spacer(),
                           Text(
                             _formatTimestamp(
-                              statistics.generatedAt ?? DateTime.now(),
+                              userData.generatedAt ?? DateTime.now(),
                             ),
                             style: const TextStyle(
                               color: Color(0xFF8E8E93),
@@ -3963,15 +3936,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      _buildDataRow(
-                        'Day Streak',
-                        '${statistics.dayStreak} days',
-                      ),
+                      _buildDataRow('Day Streak', '${userData.dayStreak} days'),
                       _buildDataRow(
                         'Focus Hours',
-                        '${statistics.focusHours} hours',
+                        '${userData.focusHours} hours',
                       ),
-                      _buildDataRow('Rank', statistics.rankPercentage),
+                      _buildDataRow('Rank', userData.rankPercentage),
                       const SizedBox(height: 12),
                       Container(
                         padding: const EdgeInsets.all(8),
@@ -4005,6 +3975,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
 
+              // Create Test Users Button
+              _buildSettingsItem(
+                title: 'Create Test Users',
+                subtitle: 'Generate test user accounts for debugging',
+                icon: Icons.group_add,
+                iconColor: const Color(0xFF06B6D4),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TestUsersScreen(),
+                    ),
+                  );
+                },
+              ),
+
               // Generate Random Data Button
               _buildSettingsItem(
                 title: 'Generate Random Data',
@@ -4015,7 +4001,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
 
               // Clear Test Data Button (only if data is generated)
-              if (statistics.isGeneratedData)
+              if (userData.isGeneratedData)
                 _buildSettingsItem(
                   title: 'Clear Test Data',
                   subtitle: 'Restore original user data',
@@ -4024,13 +4010,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: _isGenerating
                       ? () {}
                       : () {
-                          statisticsProvider?.updateStatistics(
-                            UserStatistics.initial(),
-                          );
+                          // Reset statistics while preserving profile data
+                          final clearedData = userData.withDefaultStatistics();
+                          userDataProvider?.updateUserData(clearedData);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text(
-                                'Test data cleared. Restored original data.',
+                                'Test data cleared. Statistics reset to default.',
                               ),
                               backgroundColor: Color(0xFF00C853),
                               duration: Duration(seconds: 2),
