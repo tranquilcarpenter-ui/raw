@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'user_data.dart';
 
@@ -42,8 +45,15 @@ class UserDataService {
       }
 
       debugPrint('✅ Successfully loaded data for user $userId');
-      debugPrint('   Name: ${data['fullName']}, Streak: ${data['dayStreak']}, Hours: ${data['focusHours']}');
-      return UserData.fromJson(data);
+      debugPrint(
+        '   Name: ${data['fullName']}, Streak: ${data['dayStreak']}, Hours: ${data['focusHours']}',
+      );
+      debugPrint('   JSON avatarUrl: ${data['avatarUrl']}');
+      debugPrint('   JSON bannerImageUrl: ${data['bannerImageUrl']}');
+      final userData = UserData.fromJson(data);
+      debugPrint('   Parsed avatarUrl: ${userData.avatarUrl}');
+      debugPrint('   Parsed bannerImageUrl: ${userData.bannerImageUrl}');
+      return userData;
     } catch (e, st) {
       debugPrint('❌ Error loading data for user $userId: $e');
       debugPrint('$st');
@@ -55,8 +65,14 @@ class UserDataService {
   Future<void> saveUserData(String userId, UserData userData) async {
     try {
       debugPrint('💾 Saving data for user: $userId');
-      debugPrint('   Name: ${userData.fullName}, Streak: ${userData.dayStreak}, Hours: ${userData.focusHours}');
+      debugPrint(
+        '   Name: ${userData.fullName}, Streak: ${userData.dayStreak}, Hours: ${userData.focusHours}',
+      );
+      debugPrint('   AvatarUrl: ${userData.avatarUrl}');
+      debugPrint('   BannerUrl: ${userData.bannerImageUrl}');
       final data = userData.toJson();
+      debugPrint('   JSON avatarUrl: ${data['avatarUrl']}');
+      debugPrint('   JSON bannerImageUrl: ${data['bannerImageUrl']}');
       await _getUserDoc(userId).set(data, SetOptions(merge: true));
       debugPrint('✅ Successfully saved data for user $userId to Firestore');
     } catch (e, st) {
@@ -87,5 +103,54 @@ class UserDataService {
       }
       return UserData.fromJson(snapshot.data() as Map<String, dynamic>);
     });
+  }
+
+  /// Upload avatar image file to Firebase Storage and update user document
+  /// Returns the download URL on success, or null on failure.
+  Future<String?> uploadAvatarFile(String userId, File file) async {
+    try {
+      debugPrint('📤 Uploading avatar for user $userId');
+      final ref = FirebaseStorage.instance.ref().child(
+        'users/$userId/avatar.jpg',
+      );
+      await ref.putFile(file);
+      final downloadUrl = await ref.getDownloadURL();
+      debugPrint('✅ Avatar uploaded, download URL: $downloadUrl');
+
+      // Save URL to Firestore user doc
+      await _getUserDoc(
+        userId,
+      ).set({'avatarUrl': downloadUrl}, SetOptions(merge: true));
+      debugPrint('✅ Saved avatarUrl to Firestore for user $userId');
+      return downloadUrl;
+    } catch (e, st) {
+      debugPrint('❌ Failed to upload avatar for $userId: $e');
+      debugPrint('$st');
+      return null;
+    }
+  }
+
+  /// Upload banner image file to Firebase Storage and update user document
+  Future<String?> uploadBannerFile(String userId, File file) async {
+    try {
+      debugPrint('📤 Uploading banner image for user $userId');
+      final ref = FirebaseStorage.instance.ref().child(
+        'users/$userId/banner.jpg',
+      );
+      await ref.putFile(file);
+      final downloadUrl = await ref.getDownloadURL();
+      debugPrint('✅ Banner uploaded, download URL: $downloadUrl');
+
+      // Save URL to Firestore user doc
+      await _getUserDoc(
+        userId,
+      ).set({'bannerImageUrl': downloadUrl}, SetOptions(merge: true));
+      debugPrint('✅ Saved bannerImageUrl to Firestore for user $userId');
+      return downloadUrl;
+    } catch (e, st) {
+      debugPrint('❌ Failed to upload banner for $userId: $e');
+      debugPrint('$st');
+      return null;
+    }
   }
 }

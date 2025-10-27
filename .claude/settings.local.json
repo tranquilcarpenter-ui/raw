@@ -13,7 +13,9 @@
       "Bash(dir \"C:\\Program Files\\Java\\jdk-25.0.0.36-hotspot\\bin\\java.exe\")",
       "Bash(if exist \"C:\\Program Files\\Java\\jdk-25.0.0.36-hotspot\\bin\\java.exe\" echo Found)",
       "Bash(if exist \"C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.0.36-hotspot\\bin\\java.exe\" echo FoundAdoptium)",
-      "Bash(del \"c:\\Users\\Home\\app\\lib\\user_statistics_service.dart\")"
+      "Bash(del \"c:\\Users\\Home\\app\\lib\\user_statistics_service.dart\")",
+      "Bash(firebase emulators:start:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

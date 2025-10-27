@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 // Firebase types are accessed via `FirebaseService` where needed
 import 'firebase_service.dart';
 import 'auth_provider.dart';
@@ -11,12 +11,55 @@ import 'auth_screen.dart';
 import 'test_users_screen.dart';
 import 'user_data.dart';
 import 'user_data_service.dart';
+import 'friend.dart';
+import 'friends_service.dart';
+import 'group.dart';
+import 'groups_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 
 // Firebase initialization is managed by `FirebaseService` singleton.
+
+// Helper function to build image widget from either local file or network URL
+Widget buildImageFromPath(
+  String imagePath, {
+  BoxFit fit = BoxFit.cover,
+  double? width,
+  double? height,
+  Alignment alignment = Alignment.center,
+  Widget? errorWidget,
+}) {
+  final isNetworkImage =
+      imagePath.startsWith('http://') || imagePath.startsWith('https://');
+
+  if (isNetworkImage) {
+    return Image.network(
+      imagePath,
+      fit: fit,
+      width: width,
+      height: height,
+      alignment: alignment,
+      errorBuilder: errorWidget != null
+          ? (context, error, stackTrace) => errorWidget
+          : null,
+    );
+  } else {
+    return Image.file(
+      File(imagePath),
+      fit: fit,
+      width: width,
+      height: height,
+      alignment: alignment,
+      errorBuilder: errorWidget != null
+          ? (context, error, stackTrace) => errorWidget
+          : null,
+    );
+  }
+}
 
 // Profile Image Provider
 class ProfileImageProvider extends InheritedWidget {
@@ -76,31 +119,8 @@ void main() async {
   // during startup or when using the VS Code debugger.
   await FirebaseService.instance.initialize();
 
-  // Connect to Firebase emulators (only in debug mode)
-  // NOTE: Firestore emulator requires Java. If you don't have Java installed,
-  // comment out the Firestore emulator block below to use production Firestore
-  if (kDebugMode) {
-    final host = defaultTargetPlatform == TargetPlatform.android
-        ? '10.0.2.2'
-        : 'localhost';
-
-    // Auth emulator
-    try {
-      final auth = FirebaseService.instance.auth;
-      await auth.useAuthEmulator(host, 9099);
-      debugPrint('Connected to Auth emulator at $host:9099');
-    } catch (_) {
-      // Already connected to emulator, ignore
-    }
-
-    // Firestore emulator
-    try {
-      UserDataService.instance.useEmulator(host, 8080);
-      debugPrint('Connected to Firestore emulator at $host:8080');
-    } catch (_) {
-      // Already connected to emulator, ignore
-    }
-  }
+  // Emulator configuration is handled centrally inside `FirebaseService`
+  // (it will configure Storage, Firestore and Auth emulators in debug builds).
 
   runApp(const FocusFlowApp());
 }
@@ -154,6 +174,10 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
           );
           setState(() {
             _userData = userData;
+            // Load profile and banner images from UserData
+            // IMPORTANT: Set to null if user doesn't have images, to clear previous user's images
+            _profileImagePath = userData.avatarUrl;
+            _bannerImagePath = userData.bannerImageUrl;
           });
         }
       } else if (user == null) {
@@ -161,7 +185,13 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
         debugPrint('👋 User logged out');
         _currentUserId = null;
         setState(() {
-          _userData = UserData.newUser(email: 'guest@example.com', fullName: 'User');
+          _userData = UserData.newUser(
+            email: 'guest@example.com',
+            fullName: 'User',
+          );
+          // Clear profile and banner images
+          _profileImagePath = null;
+          _bannerImagePath = null;
         });
       }
     });
@@ -1051,7 +1081,10 @@ class _FocusScreenState extends State<FocusScreen>
                       final userDataProvider = UserDataProvider.of(context);
                       final userData =
                           userDataProvider?.userData ??
-                          UserData.newUser(email: 'guest@example.com', fullName: 'User');
+                          UserData.newUser(
+                            email: 'guest@example.com',
+                            fullName: 'User',
+                          );
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1097,7 +1130,10 @@ class _FocusScreenState extends State<FocusScreen>
                       final userDataProvider = UserDataProvider.of(context);
                       final userData =
                           userDataProvider?.userData ??
-                          UserData.newUser(email: 'guest@example.com', fullName: 'User');
+                          UserData.newUser(
+                            email: 'guest@example.com',
+                            fullName: 'User',
+                          );
 
                       return Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1159,17 +1195,14 @@ class _FocusScreenState extends State<FocusScreen>
                                 ),
                                 child: ClipOval(
                                   child: profileImagePath != null
-                                      ? Image.file(
-                                          File(profileImagePath),
+                                      ? buildImageFromPath(
+                                          profileImagePath,
                                           fit: BoxFit.cover,
-                                          errorBuilder:
-                                              (context, error, stackTrace) {
-                                                return const Icon(
-                                                  Icons.person,
-                                                  color: Color(0xFF8E8E93),
-                                                  size: 28,
-                                                );
-                                              },
+                                          errorWidget: const Icon(
+                                            Icons.person,
+                                            color: Color(0xFF8E8E93),
+                                            size: 28,
+                                          ),
                                         )
                                       : const Icon(
                                           Icons.person,
@@ -1274,21 +1307,109 @@ class _CommunityScreenState extends State<CommunityScreen> {
   double _lastScrollOffset = 0;
   bool _isScrollingDown = false;
 
-  final List<Map<String, dynamic>> _friends = [
-    {'rank': 1, 'name': 'Alex Wang', 'emoji': '18🔥', 'hours': '1252 h'},
-    {'rank': 2, 'name': 'Amy Wills', 'emoji': '7🔥', 'hours': '952 h'},
-    {'rank': 3, 'name': 'Mia Chemistry', 'emoji': '125🔥', 'hours': '897 h'},
-    {'rank': 4, 'name': 'David Cal', 'emoji': '231🔥', 'hours': '723 h'},
-    {'rank': 5, 'name': 'Me', 'emoji': '6🔥', 'hours': '241 h'},
-    {'rank': 6, 'name': 'Luis Difal', 'emoji': '', 'hours': '212 h'},
-    {'rank': 7, 'name': 'Gyenge Márk', 'emoji': '24🔥', 'hours': '197 h'},
-  ];
+  List<Friend> _friends = [];
+  List<Friend> _pendingRequests = [];
+  List<Friend> _outgoingRequests = [];
+  bool _loadingFriends = false;
+
+  List<Group> _groups = [];
+  bool _loadingGroups = false;
 
   @override
   void initState() {
     super.initState();
     _friendsScrollController.addListener(_onScroll);
     _groupsScrollController.addListener(_onScroll);
+    _loadFriends();
+    _loadPendingRequests();
+    _loadOutgoingRequests();
+    _loadGroups();
+  }
+
+  Future<void> _loadFriends() async {
+    final user = FirebaseService.instance.auth.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _loadingFriends = true;
+    });
+
+    try {
+      final friends = await FriendsService.instance.getFriends(user.uid);
+      if (mounted) {
+        setState(() {
+          _friends = friends;
+          _loadingFriends = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading friends: $e');
+      if (mounted) {
+        setState(() {
+          _loadingFriends = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadPendingRequests() async {
+    final user = FirebaseService.instance.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final requests = await FriendsService.instance.getPendingRequests(
+        user.uid,
+      );
+      if (mounted) {
+        setState(() {
+          _pendingRequests = requests;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading pending requests: $e');
+    }
+  }
+
+  Future<void> _loadOutgoingRequests() async {
+    final user = FirebaseService.instance.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final requests = await FriendsService.instance.getOutgoingRequests(user.uid);
+      if (mounted) {
+        setState(() {
+          _outgoingRequests = requests;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading outgoing requests: $e');
+    }
+  }
+
+  Future<void> _loadGroups() async {
+    final user = FirebaseService.instance.auth.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _loadingGroups = true;
+    });
+
+    try {
+      final groups = await GroupsService.instance.getUserGroups(user.uid);
+      if (mounted) {
+        setState(() {
+          _groups = groups;
+          _loadingGroups = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading groups: $e');
+      if (mounted) {
+        setState(() {
+          _loadingGroups = false;
+        });
+      }
+    }
   }
 
   @override
@@ -1366,12 +1487,233 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
+  Future<void> _showAddFriendDialog() async {
+    final user = FirebaseService.instance.auth.currentUser;
+    if (user == null) return;
+
+    final searchController = TextEditingController();
+    Map<String, UserData> searchResults = {};
+    bool isSearching = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1C1C1E),
+          title: const Text(
+            'Add Friend',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Search by name or user ID',
+                  style: TextStyle(color: Color(0xFF8E8E93), fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: searchController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Name or ID...',
+                    hintStyle: const TextStyle(color: Color(0xFF8E8E93)),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: Color(0xFF8E8E93),
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFF2C2C2E),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (query) async {
+                    if (query.trim().isEmpty) {
+                      setDialogState(() {
+                        searchResults = {};
+                      });
+                      return;
+                    }
+
+                    setDialogState(() {
+                      isSearching = true;
+                    });
+
+                    // Search by name or ID
+                    Map<String, UserData> results;
+                    if (query.trim().length < 20) {
+                      // Search by name
+                      results = await FriendsService.instance.searchUsersByName(
+                        query.trim(),
+                      );
+                    } else {
+                      // Search by ID (if query looks like a user ID)
+                      final userById = await FriendsService.instance
+                          .getUserById(query.trim());
+                      results = userById != null
+                          ? {query.trim(): userById}
+                          : {};
+                    }
+
+                    // Filter out the current user from search results
+                    results.remove(user.uid);
+
+                    // Also filter out users who are already friends or have pending requests
+                    final existingUserIds = await FriendsService.instance
+                        .getExistingConnectionIds(user.uid);
+
+                    results.removeWhere((userId, _) => existingUserIds.contains(userId));
+
+                    setDialogState(() {
+                      searchResults = results;
+                      isSearching = false;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                if (isSearching)
+                  const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF8B5CF6)),
+                  )
+                else if (searchResults.isEmpty &&
+                    searchController.text.isNotEmpty)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'No users found',
+                        style: TextStyle(color: Color(0xFF8E8E93)),
+                      ),
+                    ),
+                  )
+                else if (searchResults.isNotEmpty)
+                  SizedBox(
+                    height: 200,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: searchResults.length,
+                      itemBuilder: (context, index) {
+                        final entry = searchResults.entries.elementAt(index);
+                        final userId = entry.key;
+                        final userData = entry.value;
+
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: const Color(0xFF2C2C2E),
+                            child: userData.avatarUrl != null
+                                ? ClipOval(
+                                    child: buildImageFromPath(
+                                      userData.avatarUrl!,
+                                      width: 40,
+                                      height: 40,
+                                      fit: BoxFit.cover,
+                                      errorWidget: const Icon(
+                                        Icons.person,
+                                        color: Color(0xFF8E8E93),
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person,
+                                    color: Color(0xFF8E8E93),
+                                  ),
+                          ),
+                          title: Text(
+                            userData.fullName,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          subtitle: Text(
+                            userData.email,
+                            style: const TextStyle(
+                              color: Color(0xFF8E8E93),
+                              fontSize: 12,
+                            ),
+                          ),
+                          trailing: const Icon(
+                            Icons.person_add,
+                            color: Color(0xFF8B5CF6),
+                          ),
+                          onTap: () async {
+                            Navigator.pop(context);
+
+                            // Show loading
+                            showDialog(
+                              context: mounted ? this.context : context,
+                              barrierDismissible: false,
+                              builder: (context) => const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF8B5CF6),
+                                ),
+                              ),
+                            );
+
+                            // Send friend request
+                            final success = await FriendsService.instance
+                                .sendFriendRequest(user.uid, userId);
+
+                            // Close loading
+                            if (mounted) Navigator.pop(this.context);
+
+                            // Show result
+                            if (mounted) {
+                              ScaffoldMessenger.of(this.context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    success
+                                        ? 'Friend request sent to ${userData.fullName}!'
+                                        : 'Failed to send friend request',
+                                  ),
+                                  backgroundColor: success
+                                      ? const Color(0xFF00C853)
+                                      : const Color(0xFFDC2626),
+                                ),
+                              );
+
+                              if (success) {
+                                _loadOutgoingRequests();
+                              }
+                            }
+                          },
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Close',
+                style: TextStyle(color: Color(0xFF8E8E93)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildFilterButton(String text, int index) {
     final isSelected = _selectedFilter == index;
     return GestureDetector(
       onTap: () {
         setState(() {
           _selectedFilter = index;
+          // Re-sort friends based on selected filter
+          if (index == 0) {
+            // Sort by monthly hours
+            _friends.sort((a, b) => b.focusHoursMonth.compareTo(a.focusHoursMonth));
+          } else {
+            // Sort by all-time hours
+            _friends.sort((a, b) => b.focusHours.compareTo(a.focusHours));
+          }
         });
       },
       child: Container(
@@ -1398,11 +1740,357 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
-  Widget _buildFriendRow(Map<String, dynamic> friend) {
-    final rank = friend['rank'] as int;
-    final name = friend['name'] as String;
-    final emoji = friend['emoji'] as String;
-    final hours = friend['hours'] as String;
+  List<Widget> _buildFriendRequestSections() {
+    final List<Widget> sections = [];
+
+    // Only show if there are any requests
+    if (_pendingRequests.isEmpty && _outgoingRequests.isEmpty) {
+      return sections;
+    }
+
+    // Show incoming friend requests if any
+    if (_pendingRequests.isNotEmpty) {
+      sections.addAll([
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Divider(color: Color(0xFF2C2C2E)),
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              const Text(
+                'Friend Requests',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${_pendingRequests.length}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'These users want to be your friend',
+            style: TextStyle(
+              color: Color(0xFF8E8E93),
+              fontSize: 13,
+              fontFamily: 'Inter',
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        ..._pendingRequests.map((request) => _buildFriendRequestRow(request)),
+      ]);
+    }
+
+    // Show outgoing friend requests if any
+    if (_outgoingRequests.isNotEmpty) {
+      sections.addAll([
+        const SizedBox(height: 24),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Divider(color: Color(0xFF2C2C2E)),
+        ),
+        const SizedBox(height: 16),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Pending Friend Requests Sent',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Waiting for these users to accept your request',
+            style: TextStyle(
+              color: Color(0xFF8E8E93),
+              fontSize: 13,
+              fontFamily: 'Inter',
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        ..._outgoingRequests.map((request) => _buildOutgoingRequestRow(request)),
+        const SizedBox(height: 24),
+      ]);
+    }
+
+    return sections;
+  }
+
+  Widget _buildOutgoingRequestRow(Friend request) {
+    final name = request.fullName;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          // Profile Picture
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.grey[800],
+            ),
+            child: ClipOval(
+              child: request.avatarUrl != null
+                  ? buildImageFromPath(
+                      request.avatarUrl!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorWidget: const Icon(
+                        Icons.person,
+                        color: Color(0xFF8E8E93),
+                        size: 24,
+                      ),
+                    )
+                  : const Icon(Icons.person, color: Color(0xFF8E8E93), size: 24),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Name
+          Expanded(
+            child: Text(
+              name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ),
+          // Pending indicator
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2C2C2E),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFF8B5CF6),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(
+                  Icons.schedule,
+                  color: Color(0xFF8B5CF6),
+                  size: 14,
+                ),
+                SizedBox(width: 4),
+                Text(
+                  'Pending',
+                  style: TextStyle(
+                    color: Color(0xFF8B5CF6),
+                    fontSize: 12,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFriendRequestRow(Friend request) {
+    final name = request.fullName;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          // Profile Picture
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.grey[800],
+            ),
+            child: ClipOval(
+              child: request.avatarUrl != null
+                  ? buildImageFromPath(
+                      request.avatarUrl!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorWidget: const Icon(
+                        Icons.person,
+                        color: Color(0xFF8E8E93),
+                        size: 24,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.person,
+                      color: Color(0xFF8E8E93),
+                      size: 24,
+                    ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Name
+          Expanded(
+            child: Text(
+              name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ),
+          // Accept Button
+          GestureDetector(
+            onTap: () => _acceptFriendRequest(request),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00C853),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Accept',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Reject Button
+          GestureDetector(
+            onTap: () => _rejectFriendRequest(request),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2C2C2E),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Reject',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _acceptFriendRequest(Friend request) async {
+    final user = FirebaseService.instance.auth.currentUser;
+    if (user == null) return;
+
+    final success = await FriendsService.instance.acceptFriendRequest(
+      user.uid,
+      request.userId,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'You and ${request.fullName} are now friends!'
+                : 'Failed to accept friend request',
+          ),
+          backgroundColor: success
+              ? const Color(0xFF00C853)
+              : const Color(0xFFDC2626),
+        ),
+      );
+
+      if (success) {
+        _loadFriends();
+        _loadPendingRequests();
+      }
+    }
+  }
+
+  Future<void> _rejectFriendRequest(Friend request) async {
+    final user = FirebaseService.instance.auth.currentUser;
+    if (user == null) return;
+
+    final success = await FriendsService.instance.rejectFriendRequest(
+      user.uid,
+      request.userId,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Friend request from ${request.fullName} rejected'
+                : 'Failed to reject friend request',
+          ),
+          backgroundColor: success
+              ? const Color(0xFF8E8E93)
+              : const Color(0xFFDC2626),
+        ),
+      );
+
+      if (success) {
+        _loadPendingRequests();
+      }
+    }
+  }
+
+  Widget _buildFriendRow(Friend friend, int rank) {
+    final name = friend.fullName;
+    final streakEmoji = friend.dayStreak > 0 ? '${friend.dayStreak}🔥' : '';
+    // Show monthly or all-time hours based on filter (0 = Month, 1 = All time)
+    final hours = _selectedFilter == 0
+        ? '${friend.focusHoursMonth} h'
+        : '${friend.focusHours} h';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1430,7 +2118,25 @@ class _CommunityScreenState extends State<CommunityScreen> {
               shape: BoxShape.circle,
               color: Colors.grey[800],
             ),
-            child: const Icon(Icons.person, color: Color(0xFF8E8E93), size: 20),
+            child: ClipOval(
+              child: friend.avatarUrl != null
+                  ? buildImageFromPath(
+                      friend.avatarUrl!,
+                      width: 32,
+                      height: 32,
+                      fit: BoxFit.cover,
+                      errorWidget: const Icon(
+                        Icons.person,
+                        color: Color(0xFF8E8E93),
+                        size: 20,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.person,
+                      color: Color(0xFF8E8E93),
+                      size: 20,
+                    ),
+            ),
           ),
           const SizedBox(width: 12),
           // Name and Emoji
@@ -1446,10 +2152,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     fontWeight: FontWeight.w400,
                   ),
                 ),
-                if (emoji.isNotEmpty) ...[
+                if (streakEmoji.isNotEmpty) ...[
                   const SizedBox(width: 6),
                   Text(
-                    emoji,
+                    streakEmoji,
                     style: const TextStyle(fontSize: 13, fontFamily: 'Inter'),
                   ),
                 ],
@@ -1502,9 +2208,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 const Spacer(),
                 if (_selectedTab == 0)
                   GestureDetector(
-                    onTap: () {
-                      // Add friends action
-                    },
+                    onTap: _showAddFriendDialog,
                     child: const Text(
                       '+ Add Friends',
                       style: TextStyle(
@@ -1545,13 +2249,73 @@ class _CommunityScreenState extends State<CommunityScreen> {
           // Content - Friends List or Groups Page
           Expanded(
             child: _selectedTab == 0
-                ? ListView.builder(
-                    controller: _friendsScrollController,
-                    itemCount: _friends.length,
-                    itemBuilder: (context, index) {
-                      return _buildFriendRow(_friends[index]);
-                    },
-                  )
+                ? _loadingFriends
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF8B5CF6),
+                          ),
+                        )
+                      : _friends.isEmpty
+                      ? SingleChildScrollView(
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 40),
+                              const Icon(
+                                Icons.people_outline,
+                                size: 64,
+                                color: Color(0xFF8E8E93),
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'No friends yet',
+                                style: TextStyle(
+                                  color: Color(0xFF8E8E93),
+                                  fontSize: 16,
+                                  fontFamily: 'Inter',
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              GestureDetector(
+                                onTap: _showAddFriendDialog,
+                                child: const Text(
+                                  'Tap "+ Add Friends" to get started',
+                                  style: TextStyle(
+                                    color: Color(0xFF8B5CF6),
+                                    fontSize: 14,
+                                    fontFamily: 'Inter',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 40),
+                              // Friend request sections at the bottom
+                              ..._buildFriendRequestSections(),
+                            ],
+                          ),
+                        )
+                      : CustomScrollView(
+                          controller: _friendsScrollController,
+                          slivers: [
+                            // Friends List
+                            SliverList(
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                index,
+                              ) {
+                                return _buildFriendRow(
+                                  _friends[index],
+                                  index + 1,
+                                );
+                              }, childCount: _friends.length),
+                            ),
+                            // Friend request sections at the bottom
+                            SliverToBoxAdapter(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: _buildFriendRequestSections(),
+                              ),
+                            ),
+                          ],
+                        )
                 : _buildGroupsPage(),
           ),
         ],
@@ -1560,71 +2324,1097 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   Widget _buildGroupsPage() {
-    return Column(
-      children: [
-        // Group Card
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              const Text(
-                'The Focused Few',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w600,
+    if (_loadingGroups) {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: Colors.white,
+        ),
+      );
+    }
+
+    return CustomScrollView(
+      controller: _groupsScrollController,
+      slivers: [
+        // Header with create and join buttons
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _showCreateGroupDialog,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Create Group'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1C1C1E),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Row(
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _showJoinGroupDialog,
+                    icon: const Icon(Icons.group_add, size: 18),
+                    label: const Text('Join Group'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1C1C1E),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Groups List
+        if (_groups.isEmpty)
+          SliverFillRemaining(
+            child: Center(
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.person, color: Color(0xFF8E8E93), size: 12),
-                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.groups_outlined,
+                    color: Color(0xFF8E8E93),
+                    size: 64,
+                  ),
+                  const SizedBox(height: 16),
                   const Text(
-                    '18 member',
+                    'No Groups Yet',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Create a group or join one with an invite code',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Color(0xFF8E8E93),
-                      fontSize: 12,
+                      fontSize: 14,
                       fontFamily: 'Inter',
                       fontWeight: FontWeight.w400,
                     ),
                   ),
                 ],
               ),
-            ],
+            ),
+          )
+        else
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final group = _groups[index];
+                return _buildGroupCard(group);
+              },
+              childCount: _groups.length,
+            ),
           ),
-        ),
-
-        const SizedBox(height: 20),
-
-        // Month/All time Filter
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              _buildFilterButton('Month', 0),
-              const SizedBox(width: 8),
-              _buildFilterButton('All time', 1),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 20),
-
-        // Group Members List
-        Expanded(
-          child: ListView.builder(
-            controller: _groupsScrollController,
-            itemCount: _friends.length,
-            itemBuilder: (context, index) {
-              return _buildFriendRow(_friends[index]);
-            },
-          ),
-        ),
       ],
+    );
+  }
+
+  Widget _buildGroupCard(Group group) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showGroupDetails(group),
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        group.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2C2C2E),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.person,
+                            color: Color(0xFF8E8E93),
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${group.memberCount}',
+                            style: const TextStyle(
+                              color: Color(0xFF8E8E93),
+                              fontSize: 12,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (group.description != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    group.description!,
+                    style: const TextStyle(
+                      color: Color(0xFF8E8E93),
+                      fontSize: 14,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w400,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2C2C2E),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.vpn_key,
+                              color: Color(0xFF8E8E93),
+                              size: 14,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              group.inviteCode,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () => _copyInviteCode(group.inviteCode),
+                      icon: const Icon(
+                        Icons.copy,
+                        color: Color(0xFF8E8E93),
+                        size: 20,
+                      ),
+                      tooltip: 'Copy Invite Code',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _copyInviteCode(String inviteCode) {
+    // TODO: Implement clipboard copy with flutter/services Clipboard
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Invite code $inviteCode copied!'),
+        backgroundColor: const Color(0xFF1C1C1E),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showCreateGroupDialog() {
+    final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          'Create Group',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Group Name',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 14,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Enter group name',
+                hintStyle: const TextStyle(color: Color(0xFF8E8E93)),
+                filled: true,
+                fillColor: const Color(0xFF2C2C2E),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Description (Optional)',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 14,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: descriptionController,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Enter group description',
+                hintStyle: const TextStyle(color: Color(0xFF8E8E93)),
+                filled: true,
+                fillColor: const Color(0xFF2C2C2E),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 16,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameController.text.trim();
+              final messenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
+
+              if (name.isEmpty) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter a group name'),
+                    backgroundColor: Color(0xFF1C1C1E),
+                  ),
+                );
+                return;
+              }
+
+              navigator.pop();
+
+              final user = FirebaseService.instance.auth.currentUser;
+              if (user == null) return;
+
+              final description = descriptionController.text.trim();
+              final group = await GroupsService.instance.createGroup(
+                userId: user.uid,
+                name: name,
+                description: description.isNotEmpty ? description : null,
+              );
+
+              if (!mounted) return;
+
+              if (group != null) {
+                _loadGroups();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Group "${group.name}" created!'),
+                    backgroundColor: const Color(0xFF1C1C1E),
+                  ),
+                );
+              } else {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to create group'),
+                    backgroundColor: Color(0xFF1C1C1E),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Create',
+              style: TextStyle(
+                fontSize: 16,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showJoinGroupDialog() {
+    final codeController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          'Join Group',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the 6-character invite code',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 14,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: codeController,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 4,
+              ),
+              textAlign: TextAlign.center,
+              maxLength: 6,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                hintText: 'XXXXXX',
+                hintStyle: const TextStyle(
+                  color: Color(0xFF8E8E93),
+                  letterSpacing: 4,
+                ),
+                filled: true,
+                fillColor: const Color(0xFF2C2C2E),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                counterText: '',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 16,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final code = codeController.text.trim().toUpperCase();
+              final messenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
+
+              if (code.length != 6) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter a valid 6-character code'),
+                    backgroundColor: Color(0xFF1C1C1E),
+                  ),
+                );
+                return;
+              }
+
+              navigator.pop();
+
+              final user = FirebaseService.instance.auth.currentUser;
+              if (user == null) return;
+
+              final success = await GroupsService.instance.joinGroup(
+                user.uid,
+                code,
+              );
+
+              if (!mounted) return;
+
+              if (success) {
+                _loadGroups();
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Successfully joined group!'),
+                    backgroundColor: Color(0xFF1C1C1E),
+                  ),
+                );
+              } else {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Invalid code or already a member'),
+                    backgroundColor: Color(0xFF1C1C1E),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Join',
+              style: TextStyle(
+                fontSize: 16,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showGroupDetails(Group group) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => GroupDetailsScreen(group: group),
+      ),
+    ).then((_) => _loadGroups()); // Reload groups when returning
+  }
+}
+
+// Group Details Screen
+class GroupDetailsScreen extends StatefulWidget {
+  final Group group;
+
+  const GroupDetailsScreen({super.key, required this.group});
+
+  @override
+  State<GroupDetailsScreen> createState() => _GroupDetailsScreenState();
+}
+
+class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
+  List<GroupMember> _members = [];
+  bool _loading = false;
+  int _selectedFilter = 1; // 0 for Month, 1 for All time
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMembers();
+  }
+
+  Future<void> _loadMembers() async {
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final members = await GroupsService.instance.getGroupMembers(
+        widget.group.groupId,
+      );
+      if (mounted) {
+        setState(() {
+          _members = members;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading group members: $e');
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseService.instance.auth.currentUser;
+    final isCreator = user != null && widget.group.isCreator(user.uid);
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          widget.group.name,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            color: const Color(0xFF1C1C1E),
+            onSelected: (value) {
+              if (value == 'leave') {
+                _confirmLeaveGroup();
+              } else if (value == 'delete') {
+                _confirmDeleteGroup();
+              }
+            },
+            itemBuilder: (context) => [
+              if (isCreator)
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.red, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Delete Group',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                const PopupMenuItem(
+                  value: 'leave',
+                  child: Row(
+                    children: [
+                      Icon(Icons.exit_to_app, color: Colors.red, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Leave Group',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            )
+          : CustomScrollView(
+              slivers: [
+                // Group Info
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        if (widget.group.description != null) ...[
+                          Text(
+                            widget.group.description!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Color(0xFF8E8E93),
+                              fontSize: 14,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1C1C1E),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              Column(
+                                children: [
+                                  const Icon(
+                                    Icons.person,
+                                    color: Color(0xFF8E8E93),
+                                    size: 24,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${widget.group.memberCount}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const Text(
+                                    'Members',
+                                    style: TextStyle(
+                                      color: Color(0xFF8E8E93),
+                                      fontSize: 12,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                width: 1,
+                                height: 40,
+                                color: const Color(0xFF2C2C2E),
+                              ),
+                              Column(
+                                children: [
+                                  const Icon(
+                                    Icons.vpn_key,
+                                    color: Color(0xFF8E8E93),
+                                    size: 24,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    widget.group.inviteCode,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 2,
+                                    ),
+                                  ),
+                                  const Text(
+                                    'Invite Code',
+                                    style: TextStyle(
+                                      color: Color(0xFF8E8E93),
+                                      fontSize: 12,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Members Header
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Text(
+                      'Members Leaderboard',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Members List
+                if (_members.isEmpty)
+                  const SliverFillRemaining(
+                    child: Center(
+                      child: Text(
+                        'No members yet',
+                        style: TextStyle(
+                          color: Color(0xFF8E8E93),
+                          fontSize: 14,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        return _buildMemberRow(_members[index], index + 1);
+                      },
+                      childCount: _members.length,
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildMemberRow(GroupMember member, int rank) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          // Rank
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: rank <= 3
+                  ? (rank == 1
+                      ? const Color(0xFFFFD700)
+                      : rank == 2
+                          ? const Color(0xFFC0C0C0)
+                          : const Color(0xFFCD7F32))
+                  : const Color(0xFF2C2C2E),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                '$rank',
+                style: TextStyle(
+                  color: rank <= 3 ? Colors.black : Colors.white,
+                  fontSize: 14,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // Avatar
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: const Color(0xFF2C2C2E),
+            backgroundImage: member.avatarUrl != null
+                ? (member.avatarUrl!.startsWith('http')
+                    ? NetworkImage(member.avatarUrl!) as ImageProvider
+                    : FileImage(File(member.avatarUrl!)))
+                : null,
+            child: member.avatarUrl == null
+                ? const Icon(Icons.person, color: Color(0xFF8E8E93), size: 24)
+                : null,
+          ),
+          const SizedBox(width: 12),
+
+          // Name
+          Expanded(
+            child: Text(
+              member.fullName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+
+          // Stats
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${member.focusHours}h',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                '${member.dayStreak} day streak',
+                style: const TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 12,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmLeaveGroup() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          'Leave Group?',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to leave "${widget.group.name}"?',
+          style: const TextStyle(
+            color: Color(0xFF8E8E93),
+            fontSize: 14,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 16,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+
+              navigator.pop();
+
+              final user = FirebaseService.instance.auth.currentUser;
+              if (user == null) return;
+
+              final success = await GroupsService.instance.leaveGroup(
+                user.uid,
+                widget.group.groupId,
+              );
+
+              if (!mounted) return;
+
+              if (success) {
+                navigator.pop(); // Go back to groups list
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Left group successfully'),
+                    backgroundColor: Color(0xFF1C1C1E),
+                  ),
+                );
+              } else {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to leave group'),
+                    backgroundColor: Color(0xFF1C1C1E),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Leave',
+              style: TextStyle(
+                fontSize: 16,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteGroup() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          'Delete Group?',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete "${widget.group.name}"? This action cannot be undone and will remove all members.',
+          style: const TextStyle(
+            color: Color(0xFF8E8E93),
+            fontSize: 14,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 16,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+
+              navigator.pop();
+
+              final success = await GroupsService.instance.deleteGroup(
+                widget.group.groupId,
+              );
+
+              if (!mounted) return;
+
+              if (success) {
+                navigator.pop(); // Go back to groups list
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Group deleted successfully'),
+                    backgroundColor: Color(0xFF1C1C1E),
+                  ),
+                );
+              } else {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to delete group'),
+                    backgroundColor: Color(0xFF1C1C1E),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Delete',
+              style: TextStyle(
+                fontSize: 16,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1830,7 +3620,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final userDataProvider = UserDataProvider.of(context);
     final userData =
-        userDataProvider?.userData ?? UserData.newUser(email: 'guest@example.com', fullName: 'User');
+        userDataProvider?.userData ??
+        UserData.newUser(email: 'guest@example.com', fullName: 'User');
 
     final profileImageProvider = ProfileImageProvider.of(context);
     final profileImagePath = profileImageProvider?.profileImagePath;
@@ -1873,8 +3664,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               },
                               blendMode: BlendMode.dstIn,
                               child: bannerImagePath != null
-                                  ? Image.file(
-                                      File(bannerImagePath),
+                                  ? buildImageFromPath(
+                                      bannerImagePath,
                                       fit: BoxFit.cover,
                                       alignment: Alignment.topCenter,
                                       width: double.infinity,
@@ -1954,8 +3745,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         child: ClipOval(
                           child: profileImagePath != null
-                              ? Image.file(
-                                  File(profileImagePath),
+                              ? buildImageFromPath(
+                                  profileImagePath,
                                   fit: BoxFit.cover,
                                   width: 90,
                                   height: 90,
@@ -3212,6 +5003,41 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     }
   }
 
+  /// Copy image from temporary cache to permanent app storage
+  Future<String> _copyImageToPermanentStorage(
+    String sourcePath,
+    String fileName,
+  ) async {
+    try {
+      // Get app's permanent document directory
+      final Directory appDir = await getApplicationDocumentsDirectory();
+
+      // Create 'profile_images' subdirectory if it doesn't exist
+      final Directory profileImagesDir = Directory(
+        '${appDir.path}/profile_images',
+      );
+      if (!await profileImagesDir.exists()) {
+        await profileImagesDir.create(recursive: true);
+      }
+
+      // Create destination path with unique filename
+      final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final String extension = path.extension(sourcePath);
+      final String destinationPath =
+          '${profileImagesDir.path}/${fileName}_$timestamp$extension';
+
+      // Copy the file
+      final File sourceFile = File(sourcePath);
+      await sourceFile.copy(destinationPath);
+
+      debugPrint('✅ Image copied to permanent storage: $destinationPath');
+      return destinationPath;
+    } catch (e) {
+      debugPrint('❌ Error copying image to permanent storage: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _showChangeUsernameDialog() async {
     final userDataProvider = UserDataProvider.of(context);
     if (userDataProvider == null) return;
@@ -3292,7 +5118,207 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     }
   }
 
+  Future<void> _showChangeEmailDialog() async {
+    final userDataProvider = UserDataProvider.of(context);
+    if (userDataProvider == null) return;
+
+    final currentUser = FirebaseService.instance.auth.currentUser;
+    if (currentUser == null) return;
+
+    final currentEmail = currentUser.email ?? '';
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text(
+          'Update Email Address',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Current email: $currentEmail',
+              style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: emailController,
+              autofocus: true,
+              keyboardType: TextInputType.emailAddress,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'New Email',
+                labelStyle: TextStyle(color: Color(0xFF8E8E93)),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF8E8E93)),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFFF59E0B)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Current Password (for verification)',
+                labelStyle: TextStyle(color: Color(0xFF8E8E93)),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF8E8E93)),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFFF59E0B)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Color(0xFF8E8E93)),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              final newEmail = emailController.text.trim();
+              final password = passwordController.text;
+
+              if (newEmail.isEmpty || !newEmail.contains('@')) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter a valid email address'),
+                    backgroundColor: Color(0xFFDC2626),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+                return;
+              }
+
+              if (password.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Password is required for verification'),
+                    backgroundColor: Color(0xFFDC2626),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+                return;
+              }
+
+              Navigator.pop(context, {'email': newEmail, 'password': password});
+            },
+            child: const Text(
+              'Update',
+              style: TextStyle(color: Color(0xFFF59E0B)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && mounted) {
+      final newEmail = result['email']!;
+      final password = result['password']!;
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFFF59E0B)),
+        ),
+      );
+
+      try {
+        // Re-authenticate user with current password
+        final credential = firebase_auth.EmailAuthProvider.credential(
+          email: currentEmail,
+          password: password,
+        );
+        await currentUser.reauthenticateWithCredential(credential);
+
+        // TODO: FOR RELEASE - Switch to email verification flow
+        // Replace updateEmail() with verifyBeforeUpdateEmail() for production
+        // This will:
+        // 1. Send verification email to new address
+        // 2. Only update Auth after user clicks verification link
+        // 3. Add listener to sync Firestore when Auth email changes
+        // 4. Handle edge cases (user doesn't verify, expired links, etc.)
+        //
+        // Current implementation: Immediate update (good for development/testing)
+        // Production implementation: Verification required (more secure)
+
+        // Update email in Firebase Auth immediately (no verification required)
+        // Using deprecated updateEmail() for immediate sync with Firestore
+        // ignore: deprecated_member_use
+        await currentUser.updateEmail(newEmail);
+
+        // Update email in Firestore and local state
+        // updateUserData automatically saves to Firestore
+        final updatedUserData = userDataProvider.userData.copyWith(
+          email: newEmail,
+          updatedAt: DateTime.now(),
+        );
+        userDataProvider.updateUserData(updatedUserData);
+
+        // Close loading dialog
+        if (mounted) Navigator.pop(context);
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Email updated to $newEmail (immediate, no verification required)',
+              ),
+              backgroundColor: const Color(0xFF00C853),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } catch (e) {
+        // Close loading dialog
+        if (mounted) Navigator.pop(context);
+
+        // Show error message
+        String errorMessage = 'Failed to update email';
+        if (e.toString().contains('wrong-password')) {
+          errorMessage = 'Incorrect password';
+        } else if (e.toString().contains('email-already-in-use')) {
+          errorMessage = 'Email is already in use';
+        } else if (e.toString().contains('invalid-email')) {
+          errorMessage = 'Invalid email address';
+        } else if (e.toString().contains('requires-recent-login')) {
+          errorMessage = 'Please log out and log back in before changing email';
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: const Color(0xFFDC2626),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+
+        debugPrint('Error updating email: $e');
+      }
+    }
+  }
+
   Future<void> _pickProfilePicture() async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
       // Show bottom sheet to choose between camera and gallery
       final ImageSource? source = await showModalBottomSheet<ImageSource>(
@@ -3353,11 +5379,68 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         );
 
         if (image != null && mounted) {
-          // Save the profile picture path
-          final profileImageProvider = ProfileImageProvider.of(context);
-          profileImageProvider?.updateProfileImage(image.path);
+          // Copy image to permanent storage
+          final String permanentPath = await _copyImageToPermanentStorage(
+            image.path,
+            'profile',
+          );
 
-          ScaffoldMessenger.of(context).showSnackBar(
+          if (!mounted) return;
+
+          // Save the profile picture path to ProfileImageProvider (for immediate display)
+          final profileImageProvider = ProfileImageProvider.of(context);
+          profileImageProvider?.updateProfileImage(permanentPath);
+
+          // Save the permanent profile picture URL to UserData (for persistence)
+          final userDataProvider = UserDataProvider.of(context);
+          if (userDataProvider != null) {
+            debugPrint(
+              '📸 Saving profile picture permanent path: $permanentPath',
+            );
+            // Attempt to upload to Firebase Storage (emulator in debug)
+            String? uploadedUrl;
+            final currentUser = FirebaseService.instance.auth.currentUser;
+            if (currentUser != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Uploading profile picture...')),
+              );
+              try {
+                uploadedUrl = await UserDataService.instance.uploadAvatarFile(
+                  currentUser.uid,
+                  File(permanentPath),
+                );
+              } catch (e) {
+                debugPrint('📸 Upload failed: $e');
+              }
+            }
+
+            final updatedUserData = userDataProvider.userData.copyWith(
+              avatarUrl: uploadedUrl ?? permanentPath,
+              updatedAt: DateTime.now(),
+            );
+            debugPrint(
+              '📸 Updated avatarUrl in UserData: ${updatedUserData.avatarUrl}',
+            );
+            userDataProvider.updateUserData(updatedUserData);
+
+            if (uploadedUrl != null && mounted) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text('Profile picture uploaded successfully'),
+                ),
+              );
+            } else if (mounted) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Profile saved locally (upload skipped or failed)',
+                  ),
+                ),
+              );
+            }
+          }
+
+          messenger.showSnackBar(
             SnackBar(
               content: Text('Profile picture updated: ${image.name}'),
               backgroundColor: const Color(0xFF00C853),
@@ -3368,7 +5451,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text('Error picking image: $e'),
             backgroundColor: const Color(0xFFDC2626),
@@ -3380,6 +5463,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   }
 
   Future<void> _pickBannerPicture() async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
       // Show bottom sheet to choose between camera and gallery
       final ImageSource? source = await showModalBottomSheet<ImageSource>(
@@ -3440,11 +5524,68 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         );
 
         if (image != null && mounted) {
-          // Save the banner picture path
-          final profileImageProvider = ProfileImageProvider.of(context);
-          profileImageProvider?.updateBannerImage(image.path);
+          // Copy image to permanent storage
+          final String permanentPath = await _copyImageToPermanentStorage(
+            image.path,
+            'banner',
+          );
 
-          ScaffoldMessenger.of(context).showSnackBar(
+          if (!mounted) return;
+
+          // Save the banner picture path to ProfileImageProvider (for immediate display)
+          final profileImageProvider = ProfileImageProvider.of(context);
+          profileImageProvider?.updateBannerImage(permanentPath);
+
+          // Save the permanent banner picture URL to UserData (for persistence)
+          final userDataProvider = UserDataProvider.of(context);
+          if (userDataProvider != null) {
+            debugPrint(
+              '🖼️ Saving banner picture permanent path: $permanentPath',
+            );
+            // Attempt to upload to Firebase Storage (emulator in debug)
+            String? uploadedUrl;
+            final currentUser = FirebaseService.instance.auth.currentUser;
+            if (currentUser != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Uploading banner picture...')),
+              );
+              try {
+                uploadedUrl = await UserDataService.instance.uploadBannerFile(
+                  currentUser.uid,
+                  File(permanentPath),
+                );
+              } catch (e) {
+                debugPrint('🖼️ Upload failed: $e');
+              }
+            }
+
+            final updatedUserData = userDataProvider.userData.copyWith(
+              bannerImageUrl: uploadedUrl ?? permanentPath,
+              updatedAt: DateTime.now(),
+            );
+            debugPrint(
+              '🖼️ Updated bannerImageUrl in UserData: ${updatedUserData.bannerImageUrl}',
+            );
+            userDataProvider.updateUserData(updatedUserData);
+
+            if (uploadedUrl != null && mounted) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text('Banner picture uploaded successfully'),
+                ),
+              );
+            } else if (mounted) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Banner saved locally (upload skipped or failed)',
+                  ),
+                ),
+              );
+            }
+          }
+
+          messenger.showSnackBar(
             SnackBar(
               content: Text('Banner picture updated: ${image.name}'),
               backgroundColor: const Color(0xFF00C853),
@@ -3455,7 +5596,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text('Error picking image: $e'),
             backgroundColor: const Color(0xFFDC2626),
@@ -3618,15 +5759,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 subtitle: 'Update your email address',
                 icon: Icons.email,
                 iconColor: const Color(0xFFF59E0B),
-                onTap: () {
-                  // TODO: Implement email change
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Email change coming soon!'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                },
+                onTap: _showChangeEmailDialog,
               ),
 
               const SizedBox(height: 24),
@@ -3784,7 +5917,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final userDataProvider = UserDataProvider.of(context);
     final userData =
-        userDataProvider?.userData ?? UserData.newUser(email: 'guest@example.com', fullName: 'User');
+        userDataProvider?.userData ??
+        UserData.newUser(email: 'guest@example.com', fullName: 'User');
 
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
@@ -3836,6 +5970,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   );
                 },
               ),
+
+              // Dev test tile removed (use the normal pickers to test uploads)
 
               // Notifications
               _buildSettingsItem(

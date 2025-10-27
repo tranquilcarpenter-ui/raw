@@ -285,6 +285,29 @@ class UserData {
     return age;
   }
 
+  /// Calculate focus hours for the current month
+  int get focusHoursThisMonth {
+    try {
+      final now = DateTime.now();
+      final monthStart = DateTime(now.year, now.month, 1);
+      final monthEnd = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+
+      int totalMinutes = 0;
+      for (final session in focusSessions) {
+        // Check if session is within this month
+        if (session.start.isAfter(monthStart.subtract(const Duration(seconds: 1))) &&
+            session.start.isBefore(monthEnd.add(const Duration(seconds: 1)))) {
+          totalMinutes += session.duration.inMinutes;
+        }
+      }
+
+      return (totalMinutes / 60).floor();
+    } catch (e) {
+      // If calculation fails, return 0
+      return 0;
+    }
+  }
+
   /// Convert to JSON for Firestore storage
   Map<String, dynamic> toJson() {
     return {
