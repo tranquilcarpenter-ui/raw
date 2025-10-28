@@ -49,9 +49,18 @@ class FirebaseService {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
-      // After initializing the core Firebase app, configure the local
-      // emulators for any services we want to use in debug mode.
-      await _configureEmulatorsIfNeeded();
+
+      if (kDebugMode) {
+        debugPrint(
+          'FirebaseService: Debug mode detected, configuring for development',
+        );
+        // Disable reCAPTCHA verification for testing
+        await FirebaseAuth.instance.setSettings(
+          appVerificationDisabledForTesting: true,
+        );
+        // Configure emulators
+        await _configureEmulatorsIfNeeded();
+      }
       _initialized = true;
       debugPrint('FirebaseService: initialize() completed successfully');
     } on FirebaseException catch (e, st) {
@@ -120,13 +129,19 @@ class FirebaseService {
       // Auth emulator (default 9099)
       try {
         const authPort = 9099;
-        FirebaseAuth.instance.useAuthEmulator(host, authPort);
         debugPrint(
-          'FirebaseService: Auth emulator configured at $host:$authPort',
+          'FirebaseService: Configuring Auth emulator with host=$host, port=$authPort',
+        );
+        await FirebaseAuth.instance.useAuthEmulator(host, authPort);
+        // Set persistence to None for emulator testing to avoid auth state conflicts
+        await FirebaseAuth.instance.setPersistence(Persistence.NONE);
+        debugPrint(
+          'FirebaseService: Auth emulator successfully configured at $host:$authPort',
         );
       } catch (e, st) {
         debugPrint('FirebaseService: failed to configure Auth emulator: $e');
         debugPrint('$st');
+        rethrow; // Rethrow to help diagnose configuration issues
       }
     } catch (e, st) {
       // In case Platform isn't available (web builds), fall back to localhost

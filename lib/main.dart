@@ -1375,7 +1375,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
     if (user == null) return;
 
     try {
-      final requests = await FriendsService.instance.getOutgoingRequests(user.uid);
+      final requests = await FriendsService.instance.getOutgoingRequests(
+        user.uid,
+      );
       if (mounted) {
         setState(() {
           _outgoingRequests = requests;
@@ -1567,7 +1569,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     final existingUserIds = await FriendsService.instance
                         .getExistingConnectionIds(user.uid);
 
-                    results.removeWhere((userId, _) => existingUserIds.contains(userId));
+                    results.removeWhere(
+                      (userId, _) => existingUserIds.contains(userId),
+                    );
 
                     setDialogState(() {
                       searchResults = results;
@@ -1709,7 +1713,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
           // Re-sort friends based on selected filter
           if (index == 0) {
             // Sort by monthly hours
-            _friends.sort((a, b) => b.focusHoursMonth.compareTo(a.focusHoursMonth));
+            _friends.sort(
+              (a, b) => b.focusHoursMonth.compareTo(a.focusHoursMonth),
+            );
           } else {
             // Sort by all-time hours
             _friends.sort((a, b) => b.focusHours.compareTo(a.focusHours));
@@ -1771,10 +1777,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: const Color(0xFF8B5CF6),
                   borderRadius: BorderRadius.circular(12),
@@ -1842,7 +1845,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        ..._outgoingRequests.map((request) => _buildOutgoingRequestRow(request)),
+        ..._outgoingRequests.map(
+          (request) => _buildOutgoingRequestRow(request),
+        ),
         const SizedBox(height: 24),
       ]);
     }
@@ -1878,7 +1883,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         size: 24,
                       ),
                     )
-                  : const Icon(Icons.person, color: Color(0xFF8E8E93), size: 24),
+                  : const Icon(
+                      Icons.person,
+                      color: Color(0xFF8E8E93),
+                      size: 24,
+                    ),
             ),
           ),
           const SizedBox(width: 12),
@@ -1900,19 +1909,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF2C2C2E),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFF8B5CF6),
-                width: 1,
-              ),
+              border: Border.all(color: const Color(0xFF8B5CF6), width: 1),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: const [
-                Icon(
-                  Icons.schedule,
-                  color: Color(0xFF8B5CF6),
-                  size: 14,
-                ),
+                Icon(Icons.schedule, color: Color(0xFF8B5CF6), size: 14),
                 SizedBox(width: 4),
                 Text(
                   'Pending',
@@ -2326,9 +2328,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
   Widget _buildGroupsPage() {
     if (_loadingGroups) {
       return const Center(
-        child: CircularProgressIndicator(
-          color: Colors.white,
-        ),
+        child: CircularProgressIndicator(color: Colors.white),
       );
     }
 
@@ -2416,13 +2416,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
           )
         else
           SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final group = _groups[index];
-                return _buildGroupCard(group);
-              },
-              childCount: _groups.length,
-            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final group = _groups[index];
+              return _buildGroupCard(group);
+            }, childCount: _groups.length),
           ),
       ],
     );
@@ -2579,9 +2576,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Create Group',
           style: TextStyle(
@@ -2735,9 +2730,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Join Group',
           style: TextStyle(
@@ -2869,11 +2862,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   void _showGroupDetails(Group group) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => GroupDetailsScreen(group: group),
-      ),
-    ).then((_) => _loadGroups()); // Reload groups when returning
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (context) => GroupDetailsScreen(group: group),
+          ),
+        )
+        .then((_) => _loadGroups()); // Reload groups when returning
   }
 }
 
@@ -2890,7 +2885,7 @@ class GroupDetailsScreen extends StatefulWidget {
 class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   List<GroupMember> _members = [];
   bool _loading = false;
-  int _selectedFilter = 1; // 0 for Month, 1 for All time
+  // Reuse filter state defined in CommunityScreen; no local filter needed here.
 
   @override
   void initState() {
@@ -2965,10 +2960,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     children: [
                       Icon(Icons.delete, color: Colors.red, size: 20),
                       SizedBox(width: 8),
-                      Text(
-                        'Delete Group',
-                        style: TextStyle(color: Colors.red),
-                      ),
+                      Text('Delete Group', style: TextStyle(color: Colors.red)),
                     ],
                   ),
                 )
@@ -2979,10 +2971,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     children: [
                       Icon(Icons.exit_to_app, color: Colors.red, size: 20),
                       SizedBox(width: 8),
-                      Text(
-                        'Leave Group',
-                        style: TextStyle(color: Colors.red),
-                      ),
+                      Text('Leave Group', style: TextStyle(color: Colors.red)),
                     ],
                   ),
                 ),
@@ -2991,9 +2980,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         ],
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            )
+          ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : CustomScrollView(
               slivers: [
                 // Group Info
@@ -3127,12 +3114,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   )
                 else
                   SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        return _buildMemberRow(_members[index], index + 1);
-                      },
-                      childCount: _members.length,
-                    ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      return _buildMemberRow(_members[index], index + 1);
+                    }, childCount: _members.length),
                   ),
               ],
             ),
@@ -3156,10 +3140,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             decoration: BoxDecoration(
               color: rank <= 3
                   ? (rank == 1
-                      ? const Color(0xFFFFD700)
-                      : rank == 2
-                          ? const Color(0xFFC0C0C0)
-                          : const Color(0xFFCD7F32))
+                        ? const Color(0xFFFFD700)
+                        : rank == 2
+                        ? const Color(0xFFC0C0C0)
+                        : const Color(0xFFCD7F32))
                   : const Color(0xFF2C2C2E),
               shape: BoxShape.circle,
             ),
@@ -3183,8 +3167,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             backgroundColor: const Color(0xFF2C2C2E),
             backgroundImage: member.avatarUrl != null
                 ? (member.avatarUrl!.startsWith('http')
-                    ? NetworkImage(member.avatarUrl!) as ImageProvider
-                    : FileImage(File(member.avatarUrl!)))
+                      ? NetworkImage(member.avatarUrl!) as ImageProvider
+                      : FileImage(File(member.avatarUrl!)))
                 : null,
             child: member.avatarUrl == null
                 ? const Icon(Icons.person, color: Color(0xFF8E8E93), size: 24)
@@ -3239,9 +3223,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Leave Group?',
           style: TextStyle(
@@ -3333,9 +3315,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Delete Group?',
           style: TextStyle(
