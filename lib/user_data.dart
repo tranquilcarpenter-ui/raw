@@ -29,12 +29,15 @@ class UserData {
   // Profile fields
   String email;
   String fullName;
+  String? username;
   DateTime? birthday;
+  String? gender;
   String? avatarUrl;
   String? bannerImageUrl;
   bool onboardingCompleted;
   DateTime createdAt;
   DateTime updatedAt;
+  Map<String, String>? questionAnswers; // Stores answers to onboarding questions
 
   // Statistics fields
   int dayStreak;
@@ -55,12 +58,15 @@ class UserData {
     // Profile
     required this.email,
     required this.fullName,
+    this.username,
     this.birthday,
+    this.gender,
     this.avatarUrl,
     this.bannerImageUrl,
     this.onboardingCompleted = false,
     required this.createdAt,
     required this.updatedAt,
+    this.questionAnswers,
     // Statistics
     required this.dayStreak,
     required this.focusHours,
@@ -81,7 +87,10 @@ class UserData {
   factory UserData.newUser({
     required String email,
     required String fullName,
+    String? username,
     DateTime? birthday,
+    String? gender,
+    Map<String, String>? questionAnswers,
   }) {
     final now = DateTime.now();
     final Map<DateTime, double> activityData = {};
@@ -103,10 +112,13 @@ class UserData {
       // Profile
       email: email,
       fullName: fullName,
+      username: username,
       birthday: birthday,
+      gender: gender,
       onboardingCompleted: true,
       createdAt: now,
       updatedAt: now,
+      questionAnswers: questionAnswers,
       // Statistics (all zeros/defaults)
       dayStreak: 0,
       focusHours: 0,
@@ -314,12 +326,15 @@ class UserData {
       // Profile
       'email': email,
       'fullName': fullName,
+      'username': username,
       'birthday': birthday?.toIso8601String(),
+      'gender': gender,
       'avatarUrl': avatarUrl,
       'bannerImageUrl': bannerImageUrl,
       'onboardingCompleted': onboardingCompleted,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'questionAnswers': questionAnswers,
       // Statistics
       'dayStreak': dayStreak,
       'focusHours': focusHours,
@@ -376,9 +391,11 @@ class UserData {
       // Profile
       email: json['email'] as String? ?? 'user@example.com',
       fullName: json['fullName'] as String? ?? 'User',
+      username: json['username'] as String?,
       birthday: json['birthday'] != null
           ? DateTime.parse(json['birthday'] as String)
           : null,
+      gender: json['gender'] as String?,
       avatarUrl: json['avatarUrl'] as String?,
       bannerImageUrl: json['bannerImageUrl'] as String?,
       onboardingCompleted: json['onboardingCompleted'] as bool? ?? false,
@@ -388,6 +405,9 @@ class UserData {
       updatedAt: json['updatedAt'] != null
           ? DateTime.parse(json['updatedAt'] as String)
           : DateTime.now(),
+      questionAnswers: json['questionAnswers'] != null
+          ? Map<String, String>.from(json['questionAnswers'] as Map)
+          : null,
       // Statistics
       dayStreak: json['dayStreak'] as int? ?? 0,
       focusHours: json['focusHours'] as int? ?? 0,
@@ -411,12 +431,15 @@ class UserData {
   UserData copyWith({
     String? email,
     String? fullName,
+    String? username,
     DateTime? birthday,
+    String? gender,
     String? avatarUrl,
     String? bannerImageUrl,
     bool? onboardingCompleted,
     DateTime? createdAt,
     DateTime? updatedAt,
+    Map<String, String>? questionAnswers,
     int? dayStreak,
     int? focusHours,
     String? rankPercentage,
@@ -434,12 +457,15 @@ class UserData {
     return UserData(
       email: email ?? this.email,
       fullName: fullName ?? this.fullName,
+      username: username ?? this.username,
       birthday: birthday ?? this.birthday,
+      gender: gender ?? this.gender,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       bannerImageUrl: bannerImageUrl ?? this.bannerImageUrl,
       onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      questionAnswers: questionAnswers ?? this.questionAnswers,
       dayStreak: dayStreak ?? this.dayStreak,
       focusHours: focusHours ?? this.focusHours,
       rankPercentage: rankPercentage ?? this.rankPercentage,

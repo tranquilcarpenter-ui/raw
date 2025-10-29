@@ -15,7 +15,14 @@
       "Bash(if exist \"C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.0.36-hotspot\\bin\\java.exe\" echo FoundAdoptium)",
       "Bash(del \"c:\\Users\\Home\\app\\lib\\user_statistics_service.dart\")",
       "Bash(firebase emulators:start:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(dir:*)",
+      "Bash(gradlew assembleDebug:*)",
+      "Bash(.gradlew.bat assembleDebug)",
+      "Bash(java -version:*)",
+      "Bash(if exist \"C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot\\bin\\java.exe\" echo FoundJava17)",
+      "Bash(\"C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot\\bin\\java.exe\" -version)",
+      "Bash(ipconfig:*)"
     ],
     "deny": [],
     "ask": []

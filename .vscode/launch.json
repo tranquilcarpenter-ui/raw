@@ -14,6 +14,14 @@
             ]
         },
         {
+            "name": "app (Physical Device with Emulators)",
+            "request": "launch",
+            "type": "dart",
+            "toolArgs": [
+                "--dart-define=EMULATOR_HOST=192.168.1.12"
+            ]
+        },
+        {
             "name": "app (profile mode)",
             "request": "launch",
             "type": "dart",

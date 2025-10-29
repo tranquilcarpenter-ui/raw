@@ -1,0 +1,237 @@
+[ +101 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[  +58 ms] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[   +1 ms] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[  +36 ms] executing: C:\Users\Home\AppData\Local\Android\sdk\platform-tools\adb.exe devices -l
+[  +38 ms] List of devices attached
+           PEKBB22614206694       device product:MGA-L29BN model:MGA_LX9N device:HWMGA-H transport_id:1
+[   +4 ms] C:\Users\Home\AppData\Local\Android\sdk\platform-tools\adb.exe -s PEKBB22614206694 shell getprop
+[  +99 ms] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[  +70 ms] executing: [c:\Users\Home\app/] C:\Flutter\bin\cache\dart-sdk\bin\dart pub --suppress-analytics --directory . get --example
+Resolving dependencies...
+Downloading packages...
+  _flutterfire_internals 1.3.59 (1.3.63 available)
+  characters 1.4.0 (1.4.1 available)
+  cloud_firestore 5.6.12 (6.0.3 available)
+  cloud_firestore_platform_interface 6.6.12 (7.0.3 available)
+  cloud_firestore_web 4.4.12 (5.0.3 available)
+  firebase_auth 5.7.0 (6.1.1 available)
+  firebase_auth_platform_interface 7.7.3 (8.1.3 available)
+  firebase_auth_web 5.15.3 (6.0.4 available)
+  firebase_core 3.15.2 (4.2.0 available)
+  firebase_core_web 2.24.1 (3.2.0 available)
+  firebase_storage 12.4.10 (13.0.3 available)
+  firebase_storage_platform_interface 5.2.10 (5.2.14 available)
+  firebase_storage_web 3.10.17 (3.10.21 available)
+  material_color_utilities 0.11.1 (0.13.0 available)
+  meta 1.16.0 (1.17.0 available)
+  palette_generator 0.3.3+7 (discontinued)
+  test_api 0.7.6 (0.7.7 available)
+Got dependencies!
+1 package is discontinued.
+16 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+[ +872 ms] Found plugin path_provider at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[   +3 ms] Found plugin path_provider_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +5 ms] Found plugin path_provider_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +2 ms] Found plugin path_provider_foundation at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.4.3\
+[   +2 ms] Found plugin path_provider_android at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.20\
+[   +2 ms] Found plugin image_picker at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.0\
+[   +1 ms] Found plugin image_picker_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +6 ms] Found plugin file_selector_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+4\
+[   +2 ms] Found plugin image_picker_macos at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[   +1 ms] Found plugin file_selector_macos at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.4+5\
+[   +1 ms] Found plugin image_picker_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[   +1 ms] Found plugin file_selector_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.3+2\
+[   +1 ms] Found plugin image_picker_ios at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+1\
+[   +1 ms] Found plugin image_picker_for_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.0\
+[   +5 ms] Found plugin image_picker_android at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+5\
+[   +1 ms] Found plugin flutter_plugin_android_lifecycle at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.32\
+[   +7 ms] Found plugin firebase_storage at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage-12.4.10\
+[   +2 ms] Found plugin firebase_storage_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage_web-3.10.17\
+[   +2 ms] Found plugin firebase_core at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-3.15.2\
+[   +1 ms] Found plugin firebase_core_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.24.1\
+[   +2 ms] Found plugin firebase_auth at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-5.7.0\
+[   +1 ms] Found plugin firebase_auth_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.15.3\
+[   +3 ms] Found plugin cloud_firestore at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-5.6.12\
+[   +1 ms] Found plugin cloud_firestore_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-4.4.12\
+[  +37 ms] Found plugin path_provider at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[   +1 ms] Found plugin path_provider_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +3 ms] Found plugin path_provider_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +1 ms] Found plugin path_provider_foundation at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.4.3\
+[        ] Found plugin path_provider_android at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.20\
+[   +1 ms] Found plugin image_picker at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.0\
+[        ] Found plugin image_picker_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +3 ms] Found plugin file_selector_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+4\
+[   +1 ms] Found plugin image_picker_macos at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[        ] Found plugin file_selector_macos at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.4+5\
+[        ] Found plugin image_picker_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[        ] Found plugin file_selector_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.3+2\
+[        ] Found plugin image_picker_ios at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+1\
+[        ] Found plugin image_picker_for_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.0\
+[   +1 ms] Found plugin image_picker_android at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+5\
+[        ] Found plugin flutter_plugin_android_lifecycle at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.32\
+[   +5 ms] Found plugin firebase_storage at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage-12.4.10\
+[        ] Found plugin firebase_storage_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage_web-3.10.17\
+[   +1 ms] Found plugin firebase_core at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-3.15.2\
+[        ] Found plugin firebase_core_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.24.1\
+[   +1 ms] Found plugin firebase_auth at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-5.7.0\
+[   +1 ms] Found plugin firebase_auth_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.15.3\
+[   +1 ms] Found plugin cloud_firestore at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-5.6.12\
+[        ] Found plugin cloud_firestore_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-4.4.12\
+[   +9 ms] Skipping generating web_plugin_registrant.dart because it is up-to-date.
+[  +17 ms] Found plugin path_provider at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[        ] Found plugin path_provider_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +2 ms] Found plugin path_provider_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +1 ms] Found plugin path_provider_foundation at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.4.3\
+[        ] Found plugin path_provider_android at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.20\
+[   +1 ms] Found plugin image_picker at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.0\
+[        ] Found plugin image_picker_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +3 ms] Found plugin file_selector_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+4\
+[   +1 ms] Found plugin image_picker_macos at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[        ] Found plugin file_selector_macos at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.4+5\
+[        ] Found plugin image_picker_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[        ] Found plugin file_selector_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.3+2\
+[        ] Found plugin image_picker_ios at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+1\
+[        ] Found plugin image_picker_for_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.0\
+[   +1 ms] Found plugin image_picker_android at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+5\
+[        ] Found plugin flutter_plugin_android_lifecycle at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.32\
+[   +5 ms] Found plugin firebase_storage at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage-12.4.10\
+[        ] Found plugin firebase_storage_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage_web-3.10.17\
+[   +1 ms] Found plugin firebase_core at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-3.15.2\
+[        ] Found plugin firebase_core_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.24.1\
+[   +1 ms] Found plugin firebase_auth at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-5.7.0\
+[        ] Found plugin firebase_auth_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.15.3\
+[   +1 ms] Found plugin cloud_firestore at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-5.6.12\
+[        ] Found plugin cloud_firestore_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-4.4.12\
+[   +3 ms] Generating c:\Users\Home\app\android\app\src\main\java\io\flutter\plugins\GeneratedPluginRegistrant.java
+[   +1 ms] Skipping generating GeneratedPluginRegistrant.java because it is up-to-date.
+[   +2 ms] Skipping generating generated_plugin_registrant.h because it is up-to-date.
+[        ] Skipping generating generated_plugin_registrant.cc because it is up-to-date.
+[        ] Skipping generating generated_plugins.cmake because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugin_registrant.h because it is up-to-date.
+[        ] Skipping generating generated_plugin_registrant.cc because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugins.cmake because it is up-to-date.
+[   +1 ms] Skipping generating GeneratedPluginRegistrant.h because it is up-to-date.
+[        ] Skipping generating GeneratedPluginRegistrant.m because it is up-to-date.
+[        ] Skipping generating GeneratedPluginRegistrant.swift because it is up-to-date.
+[  +50 ms] ro.hardware = kirin710
+[   +1 ms] ro.build.characteristics = default
+[  +65 ms] Initializing file store
+[   +7 ms] Skipping target: gen_localizations
+[   +2 ms] gen_dart_plugin_registrant: Starting due to {InvalidatedReasonKind.outputSetAddition: The following outputs were added to the output set: c:\Users\Home\app\.dart_tool\flutter_build\dart_plugin_registrant.dart, InvalidatedReasonKind.inputChanged: The following inputs have updated contents: c:\Users\Home\app\.dart_tool\package_config.json}
+[  +25 ms] Found plugin path_provider at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[        ] Found plugin path_provider_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +3 ms] Found plugin path_provider_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +1 ms] Found plugin path_provider_foundation at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.4.3\
+[        ] Found plugin path_provider_android at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.20\
+[   +1 ms] Found plugin image_picker at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.0\
+[        ] Found plugin image_picker_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +3 ms] Found plugin file_selector_windows at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+4\
+[   +1 ms] Found plugin image_picker_macos at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[        ] Found plugin file_selector_macos at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.4+5\
+[   +2 ms] Found plugin image_picker_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[  +45 ms] Found plugin file_selector_linux at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.3+2\
+[   +1 ms] Found plugin image_picker_ios at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+1\
+[        ] Found plugin image_picker_for_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.0\
+[   +1 ms] Found plugin image_picker_android at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+5\
+[        ] Found plugin flutter_plugin_android_lifecycle at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.32\
+[   +4 ms] Found plugin firebase_storage at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage-12.4.10\
+[        ] Found plugin firebase_storage_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage_web-3.10.17\
+[   +1 ms] Found plugin firebase_core at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-3.15.2\
+[        ] Found plugin firebase_core_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.24.1\
+[   +1 ms] Found plugin firebase_auth at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-5.7.0\
+[        ] Found plugin firebase_auth_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.15.3\
+[   +2 ms] Found plugin cloud_firestore at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-5.6.12\
+[        ] Found plugin cloud_firestore_web at C:\Users\Home\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-4.4.12\
+[  +10 ms] Skipping generating dart_plugin_registrant.dart because it is up-to-date.
+[        ] gen_dart_plugin_registrant: Complete
+[   +1 ms] _composite: Starting due to {}
+[        ] _composite: Complete
+[   +2 ms] complete
+[   +3 ms] Launching lib\main.dart on MGA LX9N in debug mode...
+[   +2 ms] C:\Flutter\bin\cache\dart-sdk\bin\dartaotruntime.exe C:\Flutter\bin\cache\dart-sdk\bin\snapshots\frontend_server_aot.dart.snapshot --sdk-root C:\Flutter\bin\cache\artifacts\engine\common\flutter_patched_sdk/ --incremental --target=flutter --experimental-emit-debug-metadata -DFLUTTER_VERSION=3.35.3 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=a402d9a437 -DFLUTTER_ENGINE_REVISION=ddf47dd3ff -DFLUTTER_DART_VERSION=3.9.2 --output-dill C:\Users\Home\AppData\Local\Temp\flutter_tools.dec7cd2a\flutter_tool.aa5ef001\app.dill --packages c:\Users\Home\app\.dart_tool\package_config.json -Ddart.vm.profile=false -Ddart.vm.product=false --enable-asserts --track-widget-creation --filesystem-scheme org-dartlang-root --initialize-from-dill build\b9dbe592fc2ae558329e0a126bb30b5a.cache.dill.track.dill --source file:///c:/Users/Home/app/.dart_tool/flutter_build/dart_plugin_registrant.dart --source package:flutter/src/dart_plugin_registrant.dart -Dflutter.dart_plugin_registrant=file:///c:/Users/Home/app/.dart_tool/flutter_build/dart_plugin_registrant.dart --verbosity=error --enable-experiment=alternative-invalidation-strategy
+[   +8 ms] executing: C:\Users\Home\AppData\Local\Android\sdk\platform-tools\adb.exe -s PEKBB22614206694 shell -x logcat -v time -t 1
+[   +7 ms] <- compile package:app/main.dart
+[ +102 ms] --------- beginning of main
+           10-29 09:28:09.221 E/HwHiAIEngine_FaceCluster(28684): Facecluster onError
+[   +7 ms] executing: C:\Users\Home\AppData\Local\Android\sdk\platform-tools\adb.exe version
+[  +31 ms] Android Debug Bridge version 1.0.41
+           Version 36.0.0-13206524
+           Installed as C:\Users\Home\AppData\Local\Android\sdk\platform-tools\adb.exe
+           Running on Windows 10.0.26200
+[   +1 ms] executing: C:\Users\Home\AppData\Local\Android\sdk\platform-tools\adb.exe start-server
+[  +27 ms] Building APK
+[  +90 ms] Top-level Gradle build file not found, skipping migration of task "clean".
+[        ] Android Studio version could not be detected, skipping Gradle-Java version compatibility check.
+[  +10 ms] CMake project not found, skipping support Android 15 16k page size migration.
+[   +3 ms] Using gradle from c:\Users\Home\app\android\gradlew.bat.
+[  +41 ms] LocalFile: 'c:\Users\Home\app\android\build.gradle.kts' doesn't provide an AGP version. Checking settings.
+[   +8 ms] LocalFile: 'c:\Users\Home\app\android\settings.gradle.kts' provides AGP version: 8.9.1
+[  +16 ms] Running Gradle task 'assembleDebug'...
+[   +1 ms] executing: [c:\Users\Home\app\android/] c:\Users\Home\app\android\gradlew.bat --full-stacktrace --info -Pverbose=true -Ptarget-platform=android-arm64 -Ptarget=c:\Users\Home\app\lib\main.dart -Pbase-application-name=android.app.Application -Pdart-defines=RkxVVFRFUl9WRVJTSU9OPTMuMzUuMw==,RkxVVFRFUl9DSEFOTkVMPXN0YWJsZQ==,RkxVVFRFUl9HSVRfVVJMPWh0dHBzOi8vZ2l0aHViLmNvbS9mbHV0dGVyL2ZsdXR0ZXIuZ2l0,RkxVVFRFUl9GUkFNRVdPUktfUkVWSVNJT049YTQwMmQ5YTQzNw==,RkxVVFRFUl9FTkdJTkVfUkVWSVNJT049ZGRmNDdkZDNmZg==,RkxVVFRFUl9EQVJUX1ZFUlNJT049My45LjI= -Pdart-obfuscation=false -Ptrack-widget-creation=true -Ptree-shake-icons=false -Pfilesystem-scheme=org-dartlang-root assembleDebug
+[        ] Initialized native services in: C:\Users\Home\.gradle\native
+[        ] Initialized jansi services in: C:\Users\Home\.gradle\native
+[ +309 ms] Found daemon DaemonInfo{pid=12068, address=[fc8d9d8c-457f-46a5-b2bb-5f1144dbf0ac port:64037, addresses:[/127.0.0.1]], state=Idle, lastBusy=1761722625106, context=DefaultDaemonContext[uid=05d39aeb-c162-4dd8-87f7-89a9e3951678,javaHome=C:\Program Files\Eclipse Adoptium\jdk-25.0.0.36-hotspot,javaVersion=25,javaVendor=Eclipse Adoptium,daemonRegistryDir=C:\Users\Home\.gradle\daemon,pid=12068,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-XX:MaxMetaspaceSize=4G,-XX:ReservedCodeCacheSize=512m,-XX:+HeapDumpOnOutOfMemoryError,-Xmx8G,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]} however its context does not match the desired criteria.
+[        ] At least one daemon option is different.
+[        ] Wanted: DaemonRequestContext{jvmCriteria=C:\Program Files\Eclipse Adoptium\jdk-25.0.0.36-hotspot (no JDK specified, using current Java home), daemonOpts=[-XX:MaxMetaspaceSize=4G, -XX:ReservedCodeCacheSize=512m, -XX:+HeapDumpOnOutOfMemoryError, --add-opens=java.base/java.lang=ALL-UNNAMED, --add-opens=java.base/java.io=ALL-UNNAMED, --add-opens=java.base/java.util=ALL-UNNAMED, -Xmx8G, -Dfile.encoding=UTF-8, -Duser.country=US, -Duser.language=en, -Duser.variant], applyInstrumentationAgent=true, nativeServicesMode=ENABLED, priority=NORMAL}
+[        ] Actual: DefaultDaemonContext[uid=05d39aeb-c162-4dd8-87f7-89a9e3951678,javaHome=C:\Program Files\Eclipse Adoptium\jdk-25.0.0.36-hotspot,javaVersion=25,javaVendor=Eclipse Adoptium,daemonRegistryDir=C:\Users\Home\.gradle\daemon,pid=12068,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-XX:MaxMetaspaceSize=4G,-XX:ReservedCodeCacheSize=512m,-XX:+HeapDumpOnOutOfMemoryError,-Xmx8G,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]
+[        ]   Looking for a different daemon...
+[        ] The client will now receive all logging from the daemon (pid: 13680). The daemon log file: C:\Users\Home\.gradle\daemon\8.12\daemon-13680.out.log
+[        ] Starting 3rd build in daemon [uptime: 1 mins 23.048 secs, performance: 99%, GC rate: 0.00/s, heap usage: 0% of 8 GiB, non-heap usage: 1% of 4 GiB]
+[        ] Using 12 worker leases.
+[  +97 ms] Now considering [C:\Users\Home\app\android] as hierarchies to watch
+[        ] Watching the file system is configured to be enabled if available
+[        ] File system watching is active
+[        ] Starting Build
+[        ] Caching disabled for Kotlin DSL script compilation (Settings/TopLevel/stage1) because:
+[        ]   Build cache is disabled
+[        ] Watched directory hierarchies: []
+[  +32 ms] Running Gradle task 'assembleDebug'... (completed in 1,061ms)
+[        ] "flutter run" took 8,120ms.
+[        ] Running 3 shutdown hooks
+[   +5 ms] Shutdown hooks complete
+[  +48 ms] exiting with code 1
