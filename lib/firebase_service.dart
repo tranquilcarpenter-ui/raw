@@ -5,6 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'firebase_options.dart';
+import 'dev_config.local.dart';
 
 class FirebaseService {
   static final FirebaseService _instance = FirebaseService._internal();
@@ -94,21 +95,47 @@ class FirebaseService {
     if (!kDebugMode) return;
 
     try {
-      // Allow overriding emulator host via a dart-define at debug time.
-      // Example: flutter run --dart-define=EMULATOR_HOST=192.168.1.42
-      // Note: for a physical Android device you must set EMULATOR_HOST to
-      // the host machine's LAN IP (e.g. 192.168.x.x). The default of
-      // '10.0.2.2' only works for the Android emulator.
+      // Priority order for emulator host:
+      // 1. EMULATOR_HOST environment variable (--dart-define)
+      // 2. dev_config.local.dart (git-ignored, machine-specific)
+      // 3. Platform defaults (10.0.2.2 for Android emulator, localhost for iOS)
+
       const envHost = String.fromEnvironment('EMULATOR_HOST');
+      final configHost = DevConfig.emulatorHost;
+
       debugPrint('FirebaseService: EMULATOR_HOST from environment: "$envHost"');
+      debugPrint('FirebaseService: DevConfig.emulatorHost: "$configHost"');
       debugPrint('FirebaseService: Platform.isAndroid: ${Platform.isAndroid}');
 
-      // TEMPORARY: Hardcoded for physical device testing
-      // TODO: Remove this and use --dart-define=EMULATOR_HOST once launch config works
-      final defaultHost = Platform.isAndroid ? '192.168.1.12' : 'localhost';
+      // Determine the host to use
+      final String host;
+      if (envHost.isNotEmpty) {
+        // Priority 1: Environment variable
+        host = envHost;
+        debugPrint('FirebaseService: Using EMULATOR_HOST from environment');
+      } else if (configHost != 'auto') {
+        // Priority 2: Local config file
+        host = configHost;
+        debugPrint('FirebaseService: Using host from dev_config.local.dart');
+      } else {
+        // Priority 3: Platform defaults
+        if (Platform.isAndroid) {
+          host = '10.0.2.2'; // Android emulator special alias
+        } else if (Platform.isIOS) {
+          host = 'localhost';
+        } else {
+          host = 'localhost';
+        }
+        debugPrint('FirebaseService: Using platform default host');
 
-      final host = envHost.isNotEmpty ? envHost : defaultHost;
-      debugPrint('FirebaseService: Using host: $host (envHost.isNotEmpty=${envHost.isNotEmpty})');
+        if (Platform.isAndroid) {
+          debugPrint('⚠️ NOTE: Using default host $host (works for Android emulator)');
+          debugPrint('   For PHYSICAL devices, set your IP in lib/dev_config.local.dart');
+          debugPrint('   or use launch config "app (Physical Device with Emulators)"');
+        }
+      }
+
+      debugPrint('FirebaseService: Final emulator host: $host');
 
       // Auth emulator (default 9099)
       try {

@@ -30,29 +30,36 @@ class FriendsService {
     }
   }
 
-  /// Search for users by full name
+  /// Search for users by username
   /// Returns map of userId -> UserData
   Future<Map<String, UserData>> searchUsersByName(String query) async {
     try {
-      debugPrint('🔍 Searching for users with name: $query');
+      debugPrint('🔍 Searching for users with username: $query');
 
       if (query.trim().isEmpty) {
         return {};
       }
 
-      // Query users collection
+      // Convert query to lowercase for case-insensitive search
+      final lowercaseQuery = query.trim().toLowerCase();
+
+      // Query users collection by username
       // Note: Firestore doesn't support full-text search natively
       // This searches for exact matches or prefixes
       final querySnapshot = await _firestore
           .collection('users')
-          .where('fullName', isGreaterThanOrEqualTo: query)
-          .where('fullName', isLessThanOrEqualTo: '$query\uf8ff')
+          .where('username', isGreaterThanOrEqualTo: lowercaseQuery)
+          .where('username', isLessThanOrEqualTo: '$lowercaseQuery\uf8ff')
           .limit(10)
           .get();
 
       final users = <String, UserData>{};
       for (final doc in querySnapshot.docs) {
-        users[doc.id] = UserData.fromJson(doc.data());
+        final userData = UserData.fromJson(doc.data());
+        // Only include users who have a username set
+        if (userData.username != null && userData.username!.isNotEmpty) {
+          users[doc.id] = userData;
+        }
       }
 
       debugPrint('✅ Found ${users.length} users');

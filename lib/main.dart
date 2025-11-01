@@ -4,6 +4,7 @@ import 'package:palette_generator/palette_generator.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 // Firebase types are accessed via `FirebaseService` where needed
 import 'firebase_service.dart';
 import 'auth_provider.dart';
@@ -15,6 +16,14 @@ import 'friend.dart';
 import 'friends_service.dart';
 import 'group.dart';
 import 'groups_service.dart';
+import 'project_service.dart';
+import 'project_selector_popup.dart';
+import 'user_profile_screen.dart';
+import 'notification_service.dart';
+import 'notification.dart';
+import 'achievement.dart';
+import 'achievements_service.dart';
+import 'achievements_screen.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -268,7 +277,19 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
                   return const AuthScreen();
                 }
 
-                // User is logged in - show main app
+                // Check if user data has been loaded
+                final userDataProvider = UserDataProvider.of(context);
+                if (userDataProvider?.userData == null) {
+                  // User is authenticated but data hasn't loaded yet
+                  return const Scaffold(
+                    backgroundColor: Color(0xFF000000),
+                    body: Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                  );
+                }
+
+                // User is logged in and data is loaded - show main app
                 return const MainScreen();
               },
             ),
@@ -508,9 +529,7 @@ class _MainScreenState extends State<MainScreen>
           onScrollDirectionChanged: _onScrollDirectionChanged,
         );
       case 2:
-        return ProfileScreen(
-          onScrollDirectionChanged: _onScrollDirectionChanged,
-        );
+        return const SettingsScreen();
       default:
         return FocusScreen(onFocusStateChanged: _onFocusStateChanged);
     }
@@ -603,9 +622,9 @@ class _MainScreenState extends State<MainScreen>
                           _buildNavItem(
                             '',
                             2,
-                            'Profile',
+                            'Settings',
                             useMaterialIcon: true,
-                            materialIcon: Icons.person,
+                            materialIcon: Icons.settings,
                           ),
                         ],
                       ),
@@ -642,6 +661,11 @@ class _FocusScreenState extends State<FocusScreen>
 
   // Color extraction
   List<Color> _paletteColors = [];
+
+  // Project tracking
+  String _selectedProjectId = 'unset';
+  String? _selectedSubprojectId;
+  String _selectedProjectName = 'Unset';
 
   @override
   void initState() {
@@ -698,15 +722,74 @@ class _FocusScreenState extends State<FocusScreen>
     });
     _timerScaleController.forward();
     widget.onFocusStateChanged?.call(true);
+
+    // Update currentlyFocusing status in Firestore
+    _updateFocusingStatus(true);
+
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         if (_remainingSeconds > 0) {
           _remainingSeconds--;
         } else {
+          _onTimerComplete();
           _stopTimer();
         }
       });
     });
+  }
+
+  Future<void> _onTimerComplete() async {
+    // Timer completed - save session and check achievements
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final userDataProvider = UserDataProvider.of(context);
+      if (userDataProvider == null) return;
+
+      final currentUserData = userDataProvider.userData;
+      final sessionDuration = Duration(seconds: _totalSeconds);
+      final sessionHours = sessionDuration.inMinutes / 60.0;
+
+      // Create new focus session
+      final newSession = FocusSession(
+        start: DateTime.now().subtract(sessionDuration),
+        duration: sessionDuration,
+        projectId: _selectedProjectId,
+        subprojectId: _selectedSubprojectId,
+      );
+
+      // Update user data with new session and increment focus hours
+      final updatedUserData = currentUserData.copyWith(
+        focusHours: currentUserData.focusHours + sessionHours.ceil(),
+        focusSessions: [...currentUserData.focusSessions, newSession],
+        updatedAt: DateTime.now(),
+      );
+
+      // Save updated user data
+      userDataProvider.updateUserData(updatedUserData);
+
+      // Check and unlock achievements
+      final newAchievements = await AchievementsService.instance
+          .checkAndUnlockAchievements(user.uid, updatedUserData);
+
+      // Show notification if new achievements unlocked
+      if (newAchievements.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🏆 Unlocked ${newAchievements.length} achievement${newAchievements.length > 1 ? 's' : ''}!',
+            ),
+            backgroundColor: const Color(0xFFFFD700),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+      debugPrint('✅ Session saved and achievements checked!');
+    } catch (e) {
+      debugPrint('❌ Error saving session or checking achievements: $e');
+    }
   }
 
   void _pauseTimer() {
@@ -716,6 +799,9 @@ class _FocusScreenState extends State<FocusScreen>
     });
     _timerScaleController.reverse();
     widget.onFocusStateChanged?.call(false);
+
+    // Update currentlyFocusing status in Firestore
+    _updateFocusingStatus(false);
   }
 
   void _stopTimer() {
@@ -726,6 +812,22 @@ class _FocusScreenState extends State<FocusScreen>
     });
     _timerScaleController.reverse();
     widget.onFocusStateChanged?.call(false);
+
+    // Update currentlyFocusing status in Firestore
+    _updateFocusingStatus(false);
+  }
+
+  Future<void> _updateFocusingStatus(bool isFocusing) async {
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
+        {'currentlyFocusing': isFocusing},
+      );
+    } catch (e) {
+      debugPrint('❌ Error updating focusing status: $e');
+    }
   }
 
   void _togglePicker() {
@@ -742,6 +844,31 @@ class _FocusScreenState extends State<FocusScreen>
       _totalSeconds = _selectedMinutes * 60;
       _remainingSeconds = _totalSeconds;
     });
+  }
+
+  void _showProjectSelector() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => ProjectSelectorPopup(
+        currentProjectId: _selectedProjectId,
+        currentSubprojectId: _selectedSubprojectId,
+        onProjectSelected: (projectId, subprojectId) async {
+          // Load the project to get its name
+          final userId = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+          if (userId != null) {
+            final project = await ProjectService.instance.loadProject(
+              userId,
+              projectId,
+            );
+            setState(() {
+              _selectedProjectId = projectId;
+              _selectedSubprojectId = subprojectId;
+              _selectedProjectName = project?.name ?? 'Unset';
+            });
+          }
+        },
+      ),
+    );
   }
 
   Widget _buildTimePicker() {
@@ -1052,6 +1179,56 @@ class _FocusScreenState extends State<FocusScreen>
                     ),
                   ),
 
+                // Project selector button - Below start/stop buttons
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 100,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: _isRunning ? null : _showProjectSelector,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1D1D1D),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.folder_outlined,
+                              color: Color(0xFF007AFF),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _selectedProjectName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            if (!_isRunning) ...[
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.arrow_drop_down,
+                                color: Color(0xFF8E8E93),
+                                size: 20,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
                 // Progress circle - Centered
                 Positioned(
                   left: 0,
@@ -1184,56 +1361,68 @@ class _FocusScreenState extends State<FocusScreen>
                           ),
                           const SizedBox(width: 12),
                           // Profile picture with status indicator
-                          Stack(
-                            children: [
-                              Container(
-                                width: 50,
-                                height: 50,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFF2C2C2E),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ProfileScreen(
+                                    onScrollDirectionChanged: null,
+                                  ),
                                 ),
-                                child: ClipOval(
-                                  child: profileImagePath != null
-                                      ? buildImageFromPath(
-                                          profileImagePath,
-                                          fit: BoxFit.cover,
-                                          errorWidget: const Icon(
+                              );
+                            },
+                            child: Stack(
+                              children: [
+                                Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Color(0xFF2C2C2E),
+                                  ),
+                                  child: ClipOval(
+                                    child: profileImagePath != null
+                                        ? buildImageFromPath(
+                                            profileImagePath,
+                                            fit: BoxFit.cover,
+                                            errorWidget: const Icon(
+                                              Icons.person,
+                                              color: Color(0xFF8E8E93),
+                                              size: 28,
+                                            ),
+                                          )
+                                        : const Icon(
                                             Icons.person,
                                             color: Color(0xFF8E8E93),
                                             size: 28,
                                           ),
-                                        )
-                                      : const Icon(
-                                          Icons.person,
-                                          color: Color(0xFF8E8E93),
-                                          size: 28,
-                                        ),
+                                  ),
                                 ),
-                              ),
-                              // Online/offline status indicator
-                              Positioned(
-                                right: 2,
-                                bottom: 2,
-                                child: Container(
-                                  width: 12,
-                                  height: 12,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: const Color.fromARGB(
-                                      255,
-                                      96,
-                                      221,
-                                      101,
-                                    ), // Green for online, use Colors.grey for offline
-                                    border: Border.all(
-                                      color: const Color(0xFF1C1C1E),
-                                      width: 2,
+                                // Online/offline status indicator
+                                Positioned(
+                                  right: 2,
+                                  bottom: 2,
+                                  child: Container(
+                                    width: 12,
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: const Color.fromARGB(
+                                        255,
+                                        96,
+                                        221,
+                                        101,
+                                      ), // Green for online, use Colors.grey for offline
+                                      border: Border.all(
+                                        color: const Color(0xFF1C1C1E),
+                                        width: 2,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ],
                       );
@@ -1411,6 +1600,20 @@ class _CommunityScreenState extends State<CommunityScreen> {
           _loadingGroups = false;
         });
       }
+    }
+  }
+
+  Future<void> _refreshCommunity() async {
+    if (_selectedTab == 0) {
+      // Friends tab
+      await Future.wait([
+        _loadFriends(),
+        _loadPendingRequests(),
+        _loadOutgoingRequests(),
+      ]);
+    } else {
+      // Groups tab
+      await _loadGroups();
     }
   }
 
@@ -2096,85 +2299,111 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          // Rank
-          SizedBox(
-            width: 20,
-            child: Text(
-              '$rank',
-              style: const TextStyle(
-                color: Color(0xFF8E8E93),
-                fontSize: 14,
-                fontFamily: 'Inter',
-                fontWeight: FontWeight.w400,
+      child: InkWell(
+        onTap: () async {
+          // Load full user data and navigate to profile
+          final userData = await FriendsService.instance.getUserById(
+            friend.userId,
+          );
+          if (userData != null && mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => UserProfileScreen(
+                  userData: userData,
+                  userId: friend.userId,
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Profile Picture
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.grey[800],
-            ),
-            child: ClipOval(
-              child: friend.avatarUrl != null
-                  ? buildImageFromPath(
-                      friend.avatarUrl!,
-                      width: 32,
-                      height: 32,
-                      fit: BoxFit.cover,
-                      errorWidget: const Icon(
-                        Icons.person,
-                        color: Color(0xFF8E8E93),
-                        size: 20,
-                      ),
-                    )
-                  : const Icon(
-                      Icons.person,
-                      color: Color(0xFF8E8E93),
-                      size: 20,
-                    ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Name and Emoji
-          Expanded(
-            child: Row(
-              children: [
-                Text(
-                  name,
+            );
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              // Rank
+              SizedBox(
+                width: 20,
+                child: Text(
+                  '$rank',
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
+                    color: Color(0xFF8E8E93),
+                    fontSize: 14,
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w400,
                   ),
                 ),
-                if (streakEmoji.isNotEmpty) ...[
-                  const SizedBox(width: 6),
-                  Text(
-                    streakEmoji,
-                    style: const TextStyle(fontSize: 13, fontFamily: 'Inter'),
-                  ),
-                ],
-              ],
-            ),
+              ),
+              const SizedBox(width: 12),
+              // Profile Picture
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.grey[800],
+                ),
+                child: ClipOval(
+                  child: friend.avatarUrl != null
+                      ? buildImageFromPath(
+                          friend.avatarUrl!,
+                          width: 32,
+                          height: 32,
+                          fit: BoxFit.cover,
+                          errorWidget: const Icon(
+                            Icons.person,
+                            color: Color(0xFF8E8E93),
+                            size: 20,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.person,
+                          color: Color(0xFF8E8E93),
+                          size: 20,
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Name and Emoji
+              Expanded(
+                child: Row(
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    if (streakEmoji.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        streakEmoji,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // Hours
+              Text(
+                hours,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
           ),
-          // Hours
-          Text(
-            hours,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontFamily: 'Inter',
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2208,19 +2437,96 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   ),
                 ),
                 const Spacer(),
-                if (_selectedTab == 0)
+                if (_selectedTab == 0) ...[
                   GestureDetector(
-                    onTap: _showAddFriendDialog,
-                    child: const Text(
-                      '+ Add Friends',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w400,
-                      ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const NotificationCenterScreen(),
+                        ),
+                      );
+                    },
+                    child: StreamBuilder<int>(
+                      stream:
+                          firebase_auth.FirebaseAuth.instance.currentUser?.uid !=
+                                  null
+                              ? NotificationService.instance.streamUnreadCount(
+                                  firebase_auth
+                                      .FirebaseAuth.instance.currentUser!.uid,
+                                )
+                              : Stream.value(0),
+                      builder: (context, snapshot) {
+                        final unreadCount = snapshot.data ?? 0;
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            const Icon(
+                              Icons.notifications_outlined,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            // Unread badge
+                            if (unreadCount > 0)
+                              Positioned(
+                                top: -4,
+                                right: -4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFFF3B30),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 16,
+                                    minHeight: 16,
+                                  ),
+                                  child: Text(
+                                    unreadCount > 99 ? '99+' : '$unreadCount',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     ),
                   ),
+                  const SizedBox(width: 16),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert, color: Colors.white, size: 20),
+                    color: const Color(0xFF1C1C1E),
+                    onSelected: (value) {
+                      if (value == 'add_friend') {
+                        _showAddFriendDialog();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'add_friend',
+                        child: Row(
+                          children: [
+                            Icon(Icons.person_add, color: Colors.white, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Add Friends',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 if (_selectedTab == 1) ...[
                   Icon(Icons.ios_share, color: Colors.white, size: 20),
                   const SizedBox(width: 16),
@@ -2258,65 +2564,77 @@ class _CommunityScreenState extends State<CommunityScreen> {
                           ),
                         )
                       : _friends.isEmpty
-                      ? SingleChildScrollView(
-                          child: Column(
-                            children: [
-                              const SizedBox(height: 40),
-                              const Icon(
-                                Icons.people_outline,
-                                size: 64,
-                                color: Color(0xFF8E8E93),
-                              ),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'No friends yet',
-                                style: TextStyle(
+                      ? RefreshIndicator(
+                          onRefresh: _refreshCommunity,
+                          color: const Color(0xFF8B5CF6),
+                          backgroundColor: const Color(0xFF1C1C1E),
+                          child: SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            child: Column(
+                              children: [
+                                const SizedBox(height: 40),
+                                const Icon(
+                                  Icons.people_outline,
+                                  size: 64,
                                   color: Color(0xFF8E8E93),
-                                  fontSize: 16,
-                                  fontFamily: 'Inter',
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              GestureDetector(
-                                onTap: _showAddFriendDialog,
-                                child: const Text(
-                                  'Tap "+ Add Friends" to get started',
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'No friends yet',
                                   style: TextStyle(
-                                    color: Color(0xFF8B5CF6),
-                                    fontSize: 14,
+                                    color: Color(0xFF8E8E93),
+                                    fontSize: 16,
                                     fontFamily: 'Inter',
                                   ),
                                 ),
-                              ),
-                              const SizedBox(height: 40),
-                              // Friend request sections at the bottom
-                              ..._buildFriendRequestSections(),
-                            ],
+                                const SizedBox(height: 8),
+                                GestureDetector(
+                                  onTap: _showAddFriendDialog,
+                                  child: const Text(
+                                    'Tap the menu to add friends',
+                                    style: TextStyle(
+                                      color: Color(0xFF8B5CF6),
+                                      fontSize: 14,
+                                      fontFamily: 'Inter',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 40),
+                                // Friend request sections at the bottom
+                                ..._buildFriendRequestSections(),
+                              ],
+                            ),
                           ),
                         )
-                      : CustomScrollView(
-                          controller: _friendsScrollController,
-                          slivers: [
-                            // Friends List
-                            SliverList(
-                              delegate: SliverChildBuilderDelegate((
-                                context,
-                                index,
-                              ) {
-                                return _buildFriendRow(
-                                  _friends[index],
-                                  index + 1,
-                                );
-                              }, childCount: _friends.length),
-                            ),
-                            // Friend request sections at the bottom
-                            SliverToBoxAdapter(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: _buildFriendRequestSections(),
+                      : RefreshIndicator(
+                          onRefresh: _refreshCommunity,
+                          color: const Color(0xFF8B5CF6),
+                          backgroundColor: const Color(0xFF1C1C1E),
+                          child: CustomScrollView(
+                            controller: _friendsScrollController,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            slivers: [
+                              // Friends List
+                              SliverList(
+                                delegate: SliverChildBuilderDelegate((
+                                  context,
+                                  index,
+                                ) {
+                                  return _buildFriendRow(
+                                    _friends[index],
+                                    index + 1,
+                                  );
+                                }, childCount: _friends.length),
                               ),
-                            ),
-                          ],
+                              // Friend request sections at the bottom
+                              SliverToBoxAdapter(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: _buildFriendRequestSections(),
+                                ),
+                              ),
+                            ],
+                          ),
                         )
                 : _buildGroupsPage(),
           ),
@@ -2332,96 +2650,102 @@ class _CommunityScreenState extends State<CommunityScreen> {
       );
     }
 
-    return CustomScrollView(
-      controller: _groupsScrollController,
-      slivers: [
-        // Header with create and join buttons
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _showCreateGroupDialog,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Create Group'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1C1C1E),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _showJoinGroupDialog,
-                    icon: const Icon(Icons.group_add, size: 18),
-                    label: const Text('Join Group'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1C1C1E),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        // Groups List
-        if (_groups.isEmpty)
-          SliverFillRemaining(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+    return RefreshIndicator(
+      onRefresh: _refreshCommunity,
+      color: const Color(0xFF8B5CF6),
+      backgroundColor: const Color(0xFF1C1C1E),
+      child: CustomScrollView(
+        controller: _groupsScrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          // Header with create and join buttons
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
                 children: [
-                  const Icon(
-                    Icons.groups_outlined,
-                    color: Color(0xFF8E8E93),
-                    size: 64,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'No Groups Yet',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontFamily: 'Inter',
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _showCreateGroupDialog,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Create Group'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1C1C1E),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Create a group or join one with an invite code',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF8E8E93),
-                      fontSize: 14,
-                      fontFamily: 'Inter',
-                      fontWeight: FontWeight.w400,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _showJoinGroupDialog,
+                      icon: const Icon(Icons.group_add, size: 18),
+                      label: const Text('Join Group'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1C1C1E),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          )
-        else
-          SliverList(
-            delegate: SliverChildBuilderDelegate((context, index) {
-              final group = _groups[index];
-              return _buildGroupCard(group);
-            }, childCount: _groups.length),
           ),
-      ],
+
+          // Groups List
+          if (_groups.isEmpty)
+            SliverFillRemaining(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.groups_outlined,
+                      color: Color(0xFF8E8E93),
+                      size: 64,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'No Groups Yet',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Create a group or join one with an invite code',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF8E8E93),
+                        fontSize: 14,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            SliverList(
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final group = _groups[index];
+                return _buildGroupCard(group);
+              }, childCount: _groups.length),
+            ),
+        ],
+      ),
     );
   }
 
@@ -2918,6 +3242,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     }
   }
 
+  Future<void> _refreshMembers() async {
+    await _loadMembers();
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseService.instance.auth.currentUser;
@@ -2981,144 +3309,150 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Colors.white))
-          : CustomScrollView(
-              slivers: [
-                // Group Info
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        if (widget.group.description != null) ...[
-                          Text(
-                            widget.group.description!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Color(0xFF8E8E93),
-                              fontSize: 14,
-                              fontFamily: 'Inter',
-                              fontWeight: FontWeight.w400,
+          : RefreshIndicator(
+              onRefresh: _refreshMembers,
+              color: const Color(0xFF8B5CF6),
+              backgroundColor: const Color(0xFF1C1C1E),
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  // Group Info
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          if (widget.group.description != null) ...[
+                            Text(
+                              widget.group.description!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFF8E8E93),
+                                fontSize: 14,
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1C1C1E),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                Column(
+                                  children: [
+                                    const Icon(
+                                      Icons.person,
+                                      color: Color(0xFF8E8E93),
+                                      size: 24,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${widget.group.memberCount}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontFamily: 'Inter',
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const Text(
+                                      'Members',
+                                      style: TextStyle(
+                                        color: Color(0xFF8E8E93),
+                                        fontSize: 12,
+                                        fontFamily: 'Inter',
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Container(
+                                  width: 1,
+                                  height: 40,
+                                  color: const Color(0xFF2C2C2E),
+                                ),
+                                Column(
+                                  children: [
+                                    const Icon(
+                                      Icons.vpn_key,
+                                      color: Color(0xFF8E8E93),
+                                      size: 24,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      widget.group.inviteCode,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontFamily: 'Inter',
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 2,
+                                      ),
+                                    ),
+                                    const Text(
+                                      'Invite Code',
+                                      style: TextStyle(
+                                        color: Color(0xFF8E8E93),
+                                        fontSize: 12,
+                                        fontFamily: 'Inter',
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 16),
                         ],
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1C1C1E),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              Column(
-                                children: [
-                                  const Icon(
-                                    Icons.person,
-                                    color: Color(0xFF8E8E93),
-                                    size: 24,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${widget.group.memberCount}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const Text(
-                                    'Members',
-                                    style: TextStyle(
-                                      color: Color(0xFF8E8E93),
-                                      fontSize: 12,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Container(
-                                width: 1,
-                                height: 40,
-                                color: const Color(0xFF2C2C2E),
-                              ),
-                              Column(
-                                children: [
-                                  const Icon(
-                                    Icons.vpn_key,
-                                    color: Color(0xFF8E8E93),
-                                    size: 24,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    widget.group.inviteCode,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 2,
-                                    ),
-                                  ),
-                                  const Text(
-                                    'Invite Code',
-                                    style: TextStyle(
-                                      color: Color(0xFF8E8E93),
-                                      fontSize: 12,
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Members Header
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Text(
-                      'Members Leaderboard',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                ),
 
-                // Members List
-                if (_members.isEmpty)
-                  const SliverFillRemaining(
-                    child: Center(
+                  // Members Header
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Text(
-                        'No members yet',
+                        'Members Leaderboard',
                         style: TextStyle(
-                          color: Color(0xFF8E8E93),
-                          fontSize: 14,
+                          color: Colors.white,
+                          fontSize: 18,
                           fontFamily: 'Inter',
-                          fontWeight: FontWeight.w400,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                  )
-                else
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      return _buildMemberRow(_members[index], index + 1);
-                    }, childCount: _members.length),
                   ),
-              ],
+
+                  // Members List
+                  if (_members.isEmpty)
+                    const SliverFillRemaining(
+                      child: Center(
+                        child: Text(
+                          'No members yet',
+                          style: TextStyle(
+                            color: Color(0xFF8E8E93),
+                            fontSize: 14,
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        return _buildMemberRow(_members[index], index + 1);
+                      }, childCount: _members.length),
+                    ),
+                ],
+              ),
             ),
     );
   }
@@ -3126,94 +3460,123 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   Widget _buildMemberRow(GroupMember member, int rank) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1E),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        children: [
-          // Rank
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: rank <= 3
-                  ? (rank == 1
-                        ? const Color(0xFFFFD700)
-                        : rank == 2
-                        ? const Color(0xFFC0C0C0)
-                        : const Color(0xFFCD7F32))
-                  : const Color(0xFF2C2C2E),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                '$rank',
-                style: TextStyle(
-                  color: rank <= 3 ? Colors.black : Colors.white,
-                  fontSize: 14,
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w600,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () async {
+            // Load full user data and navigate to profile
+            final userData = await FriendsService.instance.getUserById(
+              member.userId,
+            );
+            if (userData != null && mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => UserProfileScreen(
+                    userData: userData,
+                    userId: member.userId,
+                  ),
                 ),
-              ),
+              );
+            }
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                // Rank
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: rank <= 3
+                        ? (rank == 1
+                              ? const Color(0xFFFFD700)
+                              : rank == 2
+                              ? const Color(0xFFC0C0C0)
+                              : const Color(0xFFCD7F32))
+                        : const Color(0xFF2C2C2E),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$rank',
+                      style: TextStyle(
+                        color: rank <= 3 ? Colors.black : Colors.white,
+                        fontSize: 14,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Avatar
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: const Color(0xFF2C2C2E),
+                  backgroundImage: member.avatarUrl != null
+                      ? (member.avatarUrl!.startsWith('http')
+                            ? NetworkImage(member.avatarUrl!) as ImageProvider
+                            : FileImage(File(member.avatarUrl!)))
+                      : null,
+                  child: member.avatarUrl == null
+                      ? const Icon(
+                          Icons.person,
+                          color: Color(0xFF8E8E93),
+                          size: 24,
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+
+                // Name
+                Expanded(
+                  child: Text(
+                    member.fullName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+
+                // Stats
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${member.focusHours}h',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '${member.dayStreak} day streak',
+                      style: const TextStyle(
+                        color: Color(0xFF8E8E93),
+                        fontSize: 12,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
-
-          // Avatar
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: const Color(0xFF2C2C2E),
-            backgroundImage: member.avatarUrl != null
-                ? (member.avatarUrl!.startsWith('http')
-                      ? NetworkImage(member.avatarUrl!) as ImageProvider
-                      : FileImage(File(member.avatarUrl!)))
-                : null,
-            child: member.avatarUrl == null
-                ? const Icon(Icons.person, color: Color(0xFF8E8E93), size: 24)
-                : null,
-          ),
-          const SizedBox(width: 12),
-
-          // Name
-          Expanded(
-            child: Text(
-              member.fullName,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontFamily: 'Inter',
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-
-          // Stats
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${member.focusHours}h',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                '${member.dayStreak} day streak',
-                style: const TextStyle(
-                  color: Color(0xFF8E8E93),
-                  fontSize: 12,
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -3420,6 +3783,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   double _lastScrollOffset = 0;
   bool _isScrollingDown = false;
 
+  int _friendsCount = 0;
+  int _groupsCount = 0;
+  bool _isLoadingCounts = true;
+
+  List<Achievement> _achievements = [];
+  bool _isLoadingAchievements = true;
+
   // Get the number of days based on selected period
   int get _daysInPeriod {
     switch (_selectedPeriod) {
@@ -3487,6 +3857,102 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _loadCounts();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload achievements whenever UserData changes (from UserDataProvider)
+    _loadAchievements();
+  }
+
+  Future<void> _loadAchievements() async {
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      debugPrint('❌ Cannot load achievements: No user logged in');
+      return;
+    }
+
+    try {
+      debugPrint('🏆 Loading achievements for user: ${user.uid}');
+
+      // First, check and unlock any achievements based on current stats
+      final userDataProvider = UserDataProvider.of(context);
+      if (userDataProvider != null) {
+        debugPrint('🏆 UserData available: focusHours=${userDataProvider.userData.focusHours}, dayStreak=${userDataProvider.userData.dayStreak}');
+        await AchievementsService.instance.checkAndUnlockAchievements(
+          user.uid,
+          userDataProvider.userData,
+        );
+      } else {
+        debugPrint('⚠️ UserDataProvider not available yet');
+      }
+
+      // Then load the updated achievements
+      final achievements =
+          await AchievementsService.instance.getUserAchievements(user.uid);
+
+      debugPrint('🏆 Loaded ${achievements.length} achievements');
+      final unlockedCount = achievements.where((a) => a.isUnlocked).length;
+      debugPrint('🏆 Unlocked achievements: $unlockedCount/${achievements.length}');
+
+      if (mounted) {
+        setState(() {
+          _achievements = achievements;
+          _isLoadingAchievements = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading achievements: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingAchievements = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshProfile() async {
+    if (!mounted) return;
+
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Reload counts
+    await _loadCounts();
+
+    // Reload user data from Firestore
+    final userData = await UserDataService.instance.loadUserData(user.uid);
+    if (userData != null && mounted) {
+      final userDataProvider = UserDataProvider.of(context);
+      userDataProvider?.updateUserData(userData);
+    }
+  }
+
+  Future<void> _loadCounts() async {
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final friends = await FriendsService.instance.getFriends(user.uid);
+      final groups = await GroupsService.instance.getUserGroups(user.uid);
+
+      if (mounted) {
+        setState(() {
+          _friendsCount = friends.length;
+          _groupsCount = groups.length;
+          _isLoadingCounts = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading counts: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingCounts = false;
+        });
+      }
+    }
   }
 
   @override
@@ -3599,9 +4065,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final userDataProvider = UserDataProvider.of(context);
-    final userData =
-        userDataProvider?.userData ??
-        UserData.newUser(email: 'guest@example.com', fullName: 'User');
+    final userData = userDataProvider!.userData;
 
     final profileImageProvider = ProfileImageProvider.of(context);
     final profileImagePath = profileImageProvider?.profileImagePath;
@@ -3611,508 +4075,506 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: const Color(0xFF000000),
       body: Stack(
         children: [
-          SingleChildScrollView(
-            controller: _scrollController,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Banner and Profile Header Stack
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    // Banner Image with alpha fade and gradient overlay
-                    SizedBox(
-                      width: double.infinity,
-                      height: 220,
-                      child: Stack(
-                        children: [
-                          // Banner image with alpha fade
-                          Positioned.fill(
-                            child: ShaderMask(
-                              shaderCallback: (Rect bounds) {
-                                return const LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.black,
-                                    Colors.black,
-                                    Colors.black,
-                                    Colors.transparent,
-                                  ],
-                                  stops: [0.0, 0.5, 0.7, 1.0],
-                                ).createShader(bounds);
-                              },
-                              blendMode: BlendMode.dstIn,
-                              child: bannerImagePath != null
-                                  ? buildImageFromPath(
-                                      bannerImagePath,
-                                      fit: BoxFit.cover,
-                                      alignment: Alignment.topCenter,
-                                      width: double.infinity,
-                                    )
-                                  : Image.asset(
-                                      'assets/images/pfbannerplaceholder.jpg',
-                                      fit: BoxFit.fitWidth,
-                                      alignment: Alignment.topCenter,
-                                      width: double.infinity,
-                                    ),
+          RefreshIndicator(
+            onRefresh: _refreshProfile,
+            color: const Color(0xFF8B5CF6),
+            backgroundColor: const Color(0xFF1C1C1E),
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Banner and Profile Header Stack
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Banner Image with alpha fade and gradient overlay
+                      SizedBox(
+                        width: double.infinity,
+                        height: 220,
+                        child: Stack(
+                          children: [
+                            // Banner image with alpha fade
+                            Positioned.fill(
+                              child: ShaderMask(
+                                shaderCallback: (Rect bounds) {
+                                  return const LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.black,
+                                      Colors.black,
+                                      Colors.black,
+                                      Colors.transparent,
+                                    ],
+                                    stops: [0.0, 0.5, 0.7, 1.0],
+                                  ).createShader(bounds);
+                                },
+                                blendMode: BlendMode.dstIn,
+                                child: bannerImagePath != null
+                                    ? buildImageFromPath(
+                                        bannerImagePath,
+                                        fit: BoxFit.cover,
+                                        alignment: Alignment.topCenter,
+                                        width: double.infinity,
+                                      )
+                                    : Image.asset(
+                                        'assets/images/pfbannerplaceholder.jpg',
+                                        fit: BoxFit.fitWidth,
+                                        alignment: Alignment.topCenter,
+                                        width: double.infinity,
+                                      ),
+                              ),
                             ),
-                          ),
-                          // Gradient overlay for darkening
-                          Positioned.fill(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.transparent,
-                                    Colors.transparent,
-                                    Colors.transparent,
-                                    const Color(
-                                      0xFF000000,
-                                    ).withValues(alpha: 0.05),
-                                    const Color(
-                                      0xFF000000,
-                                    ).withValues(alpha: 0.15),
-                                    const Color(
-                                      0xFF000000,
-                                    ).withValues(alpha: 0.3),
-                                    const Color(
-                                      0xFF000000,
-                                    ).withValues(alpha: 0.5),
-                                    const Color(
-                                      0xFF000000,
-                                    ).withValues(alpha: 0.7),
-                                    const Color(
-                                      0xFF000000,
-                                    ).withValues(alpha: 0.88),
-                                    const Color(0xFF000000),
-                                  ],
-                                  stops: const [
-                                    0.0,
-                                    0.15,
-                                    0.3,
-                                    0.42,
-                                    0.54,
-                                    0.65,
-                                    0.75,
-                                    0.85,
-                                    0.95,
-                                    1.0,
-                                  ],
+                            // Gradient overlay for darkening
+                            Positioned.fill(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      Colors.transparent,
+                                      Colors.transparent,
+                                      const Color(
+                                        0xFF000000,
+                                      ).withValues(alpha: 0.05),
+                                      const Color(
+                                        0xFF000000,
+                                      ).withValues(alpha: 0.15),
+                                      const Color(
+                                        0xFF000000,
+                                      ).withValues(alpha: 0.3),
+                                      const Color(
+                                        0xFF000000,
+                                      ).withValues(alpha: 0.5),
+                                      const Color(
+                                        0xFF000000,
+                                      ).withValues(alpha: 0.7),
+                                      const Color(
+                                        0xFF000000,
+                                      ).withValues(alpha: 0.88),
+                                      const Color(0xFF000000),
+                                    ],
+                                    stops: const [
+                                      0.0,
+                                      0.15,
+                                      0.3,
+                                      0.42,
+                                      0.54,
+                                      0.65,
+                                      0.75,
+                                      0.85,
+                                      0.95,
+                                      1.0,
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+                      // Profile picture centered overlaying the banner bottom
+                      Positioned(
+                        top: 140,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: const Color(0xFF000000),
+                                    width: 4,
+                                  ),
+                                  color: const Color(0xFF2C2C2E),
+                                ),
+                                child: ClipOval(
+                                  child: profileImagePath != null
+                                      ? buildImageFromPath(
+                                          profileImagePath,
+                                          fit: BoxFit.cover,
+                                          width: 120,
+                                          height: 120,
+                                        )
+                                      : const Icon(
+                                          Icons.person,
+                                          color: Colors.white,
+                                          size: 60,
+                                        ),
+                                ),
+                              ),
+                              // Currently Focusing indicator
+                              if (userData.currentlyFocusing) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1C1C1E),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(0xFF2C2C2E),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFF30D158),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Text(
+                                        'Currently Focusing',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
+                        ),
+                      ),
+                      // Back button on banner (top left)
+                      Positioned(
+                        top: 50,
+                        left: 16,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF000000,
+                              ).withValues(alpha: 0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.arrow_back,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 50),
+
+                  // Profile name, counters, and username (centered)
+                  Column(
+                    children: [
+                      // Full Name
+                      Text(
+                        userData.fullName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w700,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Friends counter, username, and clubs counter row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Friends counter (hidden if 0)
+                          if (!_isLoadingCounts && _friendsCount > 0) ...[
+                            Text(
+                              '$_friendsCount ${_friendsCount == 1 ? 'Friend' : 'Friends'}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                          ],
+
+                          // Username
+                          if (userData.username != null &&
+                              userData.username!.isNotEmpty)
+                            Text(
+                              '@${userData.username}',
+                              style: const TextStyle(
+                                color: Color(0xFF8E8E93),
+                                fontSize: 14,
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+
+                          // Clubs counter (hidden if 0)
+                          if (!_isLoadingCounts && _groupsCount > 0) ...[
+                            const SizedBox(width: 16),
+                            Text(
+                              '$_groupsCount ${_groupsCount == 1 ? 'Club' : 'Clubs'}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
-                    ),
-                    // Profile picture overlaying the banner bottom
-                    Positioned(
-                      top: 180,
-                      left: 16,
-                      child: Container(
-                        width: 90,
-                        height: 90,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: const Color(0xFF000000),
-                            width: 4,
-                          ),
-                          color: const Color(0xFF2C2C2E),
-                        ),
-                        child: ClipOval(
-                          child: profileImagePath != null
-                              ? buildImageFromPath(
-                                  profileImagePath,
-                                  fit: BoxFit.cover,
-                                  width: 90,
-                                  height: 90,
-                                )
-                              : const Icon(
-                                  Icons.person,
-                                  color: Colors.white,
-                                  size: 45,
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Horizontally scrollable achievements row
+                  SizedBox(
+                    height: 50,
+                    child: _isLoadingAchievements
+                        ? const Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: _achievements.length,
+                            itemBuilder: (context, index) {
+                              final achievement = _achievements[index];
+                              return GestureDetector(
+                                onTap: () {
+                                  final user = firebase_auth.FirebaseAuth.instance.currentUser;
+                                  if (user != null) {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => AchievementsScreen(userId: user.uid),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: Container(
+                                  margin: EdgeInsets.only(
+                                    right: index < _achievements.length - 1 ? 8 : 0,
+                                  ),
+                                  width: 50,
+                                  height: 50,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: achievement.isUnlocked
+                                        ? Image.asset(
+                                            achievement.iconUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder:
+                                                (context, error, stackTrace) {
+                                              // Fallback to stone if badge image not found
+                                              return Image.asset(
+                                                'assets/images/achievements/stone.png',
+                                                fit: BoxFit.cover,
+                                              );
+                                            },
+                                          )
+                                        : ColorFiltered(
+                                            colorFilter: const ColorFilter.mode(
+                                              Colors.black45,
+                                              BlendMode.darken,
+                                            ),
+                                            child: Opacity(
+                                              opacity: 0.4,
+                                              child: Image.asset(
+                                                'assets/images/achievements/stone.png',
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
+                                          ),
+                                  ),
                                 ),
+                              );
+                            },
+                          ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Rest of content with AppSafeArea padding
+                  AppSafeArea(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Stats Cards Row
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 140,
+                                child: AppCard(
+                                  borderRadius: 16,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        '${userData.dayStreak}',
+                                        style: const TextStyle(
+                                          color: Color(0xFFFFD700),
+                                          fontSize: 48,
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'DAY STREAK',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: SizedBox(
+                                height: 140,
+                                child: AppCard(
+                                  borderRadius: 16,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        '${userData.focusHours}',
+                                        style: const TextStyle(
+                                          color: Color(0xFFB794F6),
+                                          fontSize: 48,
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'FOCUS HOURS',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                    // Settings icon on banner
-                    Positioned(
-                      top: 180,
-                      right: 16,
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const SettingsScreen(),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF000000,
-                            ).withValues(alpha: 0.5),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.settings,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Profile info (Name and rank) positioned next to profile picture
-                    Positioned(
-                      top: 180,
-                      left: 112,
-                      right: 16,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            userData.fullName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontFamily: 'Inter',
-                              fontWeight: FontWeight.w700,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2C2C2E),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
+
+                        const SizedBox(height: 24),
+
+                        // Period selection buttons and navigation
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Period navigation
+                            Row(
                               children: [
-                                const Icon(
-                                  Icons.emoji_events,
-                                  color: Color(0xFFFFD700),
-                                  size: 12,
+                                GestureDetector(
+                                  onTap: _navigatePrevious,
+                                  child: const Icon(
+                                    Icons.chevron_left,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
                                 ),
-                                const SizedBox(width: 4),
+                                const SizedBox(width: 8),
                                 Text(
-                                  userData.rankPercentage,
+                                  _periodLabel,
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 11,
+                                    fontSize: 14,
                                     fontFamily: 'Inter',
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
+                                const SizedBox(width: 8),
+                                GestureDetector(
+                                  onTap: _navigateNext,
+                                  child: Icon(
+                                    Icons.chevron_right,
+                                    color: _currentOffset > 0
+                                        ? Colors.white
+                                        : const Color(0xFF3A3A3C),
+                                    size: 24,
+                                  ),
+                                ),
                               ],
                             ),
-                          ),
-                        ],
-                      ),
+                            // Period buttons
+                            Row(
+                              children: [
+                                _buildPeriodButton('Week', 0),
+                                const SizedBox(width: 8),
+                                _buildPeriodButton('Month', 1),
+                                const SizedBox(width: 8),
+                                _buildPeriodButton('Year', 2),
+                              ],
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Activity Graph
+                        _buildActivityGraph(userData),
+
+                        const SizedBox(height: 24),
+
+                        // Time of Day Performance Graph
+                        _buildTimeOfDayGraph(userData),
+
+                        const SizedBox(height: 30),
+                      ],
                     ),
-                  ],
-                ),
-
-                const SizedBox(height: 30),
-
-                // Rest of content with AppSafeArea padding
-                AppSafeArea(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 20),
-
-                      // Achievement Badges Row
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: List.generate(7, (index) {
-                          return SizedBox(
-                            width: 42,
-                            height: 42,
-                            child: Image.asset(
-                              'assets/images/stone.png',
-                              fit: BoxFit.contain,
-                            ),
-                          );
-                        }),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Stats Cards Row
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SizedBox(
-                              height: 140,
-                              child: AppCard(
-                                borderRadius: 16,
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      '${userData.dayStreak}',
-                                      style: const TextStyle(
-                                        color: Color(0xFFFFD700),
-                                        fontSize: 48,
-                                        fontFamily: 'Inter',
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    const Text(
-                                      'DAY STREAK',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontFamily: 'Inter',
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 1,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: SizedBox(
-                              height: 140,
-                              child: AppCard(
-                                borderRadius: 16,
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      '${userData.focusHours}',
-                                      style: const TextStyle(
-                                        color: Color(0xFFB794F6),
-                                        fontSize: 48,
-                                        fontFamily: 'Inter',
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    const Text(
-                                      'FOCUS HOURS',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontFamily: 'Inter',
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 1,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Small Stats Cards
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SizedBox(
-                              height: 60,
-                              child: AppCard(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 36,
-                                      height: 36,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFF2C2C2E),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.emoji_events,
-                                        color: Colors.white,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          userData.currentBadge,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 13,
-                                            fontFamily: 'Inter',
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          userData.currentBadgeProgress,
-                                          style: const TextStyle(
-                                            color: Color(0xFF8E8E93),
-                                            fontSize: 11,
-                                            fontFamily: 'Inter',
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: SizedBox(
-                              height: 60,
-                              child: AppCard(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 36,
-                                      height: 36,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFF2C2C2E),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.military_tech,
-                                        color: Colors.white,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          userData.nextBadge,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 13,
-                                            fontFamily: 'Inter',
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          userData.nextBadgeProgress,
-                                          style: const TextStyle(
-                                            color: Color(0xFF8E8E93),
-                                            fontSize: 11,
-                                            fontFamily: 'Inter',
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Period selection buttons and navigation
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          // Period navigation
-                          Row(
-                            children: [
-                              GestureDetector(
-                                onTap: _navigatePrevious,
-                                child: const Icon(
-                                  Icons.chevron_left,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _periodLabel,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontFamily: 'Inter',
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: _navigateNext,
-                                child: Icon(
-                                  Icons.chevron_right,
-                                  color: _currentOffset > 0
-                                      ? Colors.white
-                                      : const Color(0xFF3A3A3C),
-                                  size: 24,
-                                ),
-                              ),
-                            ],
-                          ),
-                          // Period buttons
-                          Row(
-                            children: [
-                              _buildPeriodButton('Week', 0),
-                              const SizedBox(width: 8),
-                              _buildPeriodButton('Month', 1),
-                              const SizedBox(width: 8),
-                              _buildPeriodButton('Year', 2),
-                            ],
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Activity Graph
-                      _buildActivityGraph(userData),
-
-                      const SizedBox(height: 24),
-
-                      // Time of Day Performance Graph
-                      _buildTimeOfDayGraph(userData),
-
-                      const SizedBox(height: 30),
-                    ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -5228,22 +5690,26 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         await currentUser.reauthenticateWithCredential(credential);
 
         // TODO: FOR RELEASE - Switch to email verification flow
-        // Replace updateEmail() with verifyBeforeUpdateEmail() for production
-        // This will:
-        // 1. Send verification email to new address
-        // 2. Only update Auth after user clicks verification link
+        // For production, use verifyBeforeUpdateEmail() which:
+        // 1. Sends verification email to new address
+        // 2. Only updates Auth after user clicks verification link
         // 3. Add listener to sync Firestore when Auth email changes
         // 4. Handle edge cases (user doesn't verify, expired links, etc.)
-        //
-        // Current implementation: Immediate update (good for development/testing)
-        // Production implementation: Verification required (more secure)
 
-        // Update email in Firebase Auth immediately (no verification required)
-        // Using deprecated updateEmail() for immediate sync with Firestore
-        // ignore: deprecated_member_use
-        await currentUser.updateEmail(newEmail);
+        // DEVELOPMENT/DEBUG SOLUTION:
+        // updateEmail() has been removed from Firebase Auth SDK
+        // For debugging with emulators, we update Firestore only
+        // Auth email remains unchanged (this is OK for local testing)
+        // User can still login with their original email
 
-        // Update email in Firestore and local state
+        // Note: In production, use verifyBeforeUpdateEmail() which requires
+        // the user to verify the new email before it's updated
+
+        debugPrint('DEBUG MODE: Updating email in Firestore only');
+        debugPrint('Auth email will remain: $currentEmail');
+        debugPrint('Firestore email will be: $newEmail');
+
+        // Update email in Firestore and local state only
         // updateUserData automatically saves to Firestore
         final updatedUserData = userDataProvider.userData.copyWith(
           email: newEmail,
@@ -5259,10 +5725,10 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Email updated to $newEmail (immediate, no verification required)',
+                'Email updated to $newEmail in profile (Debug mode: Login still uses $currentEmail)',
               ),
               backgroundColor: const Color(0xFF00C853),
-              duration: const Duration(seconds: 3),
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -5773,8 +6239,292 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   }
 }
 
+// Notification Center Screen
+class NotificationCenterScreen extends StatelessWidget {
+  const NotificationCenterScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final userId = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+
+    if (userId == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF000000),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF000000),
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: const Text(
+            'Notifications',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        body: const Center(
+          child: Text(
+            'Please sign in to view notifications',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF000000),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF000000),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Notifications',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await NotificationService.instance.markAllAsRead(userId);
+            },
+            child: const Text(
+              'Mark all read',
+              style: TextStyle(
+                color: Color(0xFF007AFF),
+                fontSize: 14,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: StreamBuilder<List<AppNotification>>(
+        stream: NotificationService.instance.streamNotifications(userId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                'Error loading notifications',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontFamily: 'Inter',
+                ),
+              ),
+            );
+          }
+
+          final notifications = snapshot.data ?? [];
+
+          if (notifications.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.notifications_none,
+                    size: 64,
+                    color: Colors.white.withValues(alpha: 0.3),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No notifications yet',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 16,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            itemCount: notifications.length,
+            itemBuilder: (context, index) {
+              final notification = notifications[index];
+              return _buildNotificationTile(context, notification, userId);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildNotificationTile(
+    BuildContext context,
+    AppNotification notification,
+    String userId,
+  ) {
+    IconData icon;
+    Color iconColor;
+    String title;
+
+    switch (notification.type) {
+      case 'nudge':
+        icon = Icons.notifications_active;
+        iconColor = const Color(0xFFFF9500);
+        title = '${notification.fromUserName} nudged you!';
+        break;
+      case 'friend_request':
+        icon = Icons.person_add;
+        iconColor = const Color(0xFF007AFF);
+        title = '${notification.fromUserName} sent you a friend request';
+        break;
+      default:
+        icon = Icons.info;
+        iconColor = const Color(0xFF8E8E93);
+        title = notification.fromUserName;
+    }
+
+    return Dismissible(
+      key: Key(notification.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        color: const Color(0xFFFF3B30),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      onDismissed: (direction) {
+        NotificationService.instance.deleteNotification(
+          userId,
+          notification.id,
+        );
+      },
+      child: InkWell(
+        onTap: () async {
+          if (!notification.isRead) {
+            await NotificationService.instance.markAsRead(
+              userId,
+              notification.id,
+            );
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: notification.isRead
+                ? Colors.transparent
+                : const Color(0xFF1C1C1E).withValues(alpha: 0.5),
+            border: const Border(
+              bottom: BorderSide(color: Color(0xFF2C2C2E), width: 0.5),
+            ),
+          ),
+          child: Row(
+            children: [
+              // Icon
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: iconColor, size: 22),
+              ),
+              const SizedBox(width: 12),
+              // Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontFamily: 'Inter',
+                        fontWeight: notification.isRead
+                            ? FontWeight.w400
+                            : FontWeight.w600,
+                      ),
+                    ),
+                    if (notification.message != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        notification.message!,
+                        style: const TextStyle(
+                          color: Color(0xFF8E8E93),
+                          fontSize: 13,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatTime(notification.createdAt),
+                      style: const TextStyle(
+                        color: Color(0xFF8E8E93),
+                        fontSize: 12,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Unread indicator
+              if (!notification.isRead)
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF007AFF),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return '${dateTime.month}/${dateTime.day}/${dateTime.year}';
+    }
+  }
+}
+
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final bool showBackButton;
+
+  const SettingsScreen({super.key, this.showBackButton = false});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -5783,13 +6533,14 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isGenerating = false;
 
-  void _generateRandomData() {
+  Future<void> _generateRandomData() async {
     final statisticsProvider = UserDataProvider.of(context);
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
 
-    if (statisticsProvider == null) {
+    if (statisticsProvider == null || user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Error: Could not access statistics provider'),
+          content: Text('Error: Could not access user data'),
           backgroundColor: Color(0xFFDC2626),
           duration: Duration(seconds: 2),
         ),
@@ -5801,8 +6552,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _isGenerating = true;
     });
 
-    // Simulate data generation with delay
-    Future.delayed(const Duration(seconds: 2), () {
+    try {
+      // Generate random project names, colors, and emojis
+      final projectNames = [
+        'Work',
+        'Personal',
+        'Study',
+        'Fitness',
+        'Hobby',
+        'Reading',
+      ];
+      final projectColors = [
+        '#FF5733',
+        '#33FF57',
+        '#3357FF',
+        '#FF33F5',
+        '#F5FF33',
+        '#33F5FF',
+      ];
+      final projectEmojis = ['💼', '🏠', '📚', '💪', '🎨', '📖'];
+
+      final random = math.Random();
+      final projectCount = 3 + random.nextInt(3); // 3-5 projects
+
+      // Create random projects in Firestore
+      for (int i = 1; i <= projectCount; i++) {
+        final projectName = projectNames[i % projectNames.length];
+        final projectColor = projectColors[i % projectColors.length];
+        final projectEmoji = projectEmojis[i % projectEmojis.length];
+
+        // Create project using ProjectService (it handles Project.create internally)
+        await ProjectService.instance.createProject(
+          user.uid,
+          name: projectName,
+          color: projectColor,
+          emoji: projectEmoji,
+        );
+
+        // We need to get the project ID that was just created
+        // Load all projects and get the latest one
+        final projects = await ProjectService.instance.loadAllProjects(
+          user.uid,
+        );
+        if (projects.isEmpty) continue;
+
+        final project = projects.last;
+
+        // Maybe add subprojects (50% chance)
+        if (random.nextBool()) {
+          final subprojectCount = 1 + random.nextInt(3); // 1-3 subprojects
+          for (int j = 0; j < subprojectCount; j++) {
+            await ProjectService.instance.addSubproject(
+              user.uid,
+              project.id,
+              'Task ${j + 1}',
+            );
+          }
+        }
+      }
+
+      // Simulate data generation with delay
+      await Future.delayed(const Duration(seconds: 1));
+
       // Generate random statistics while preserving profile data
       final currentUserData = statisticsProvider.userData;
       final newUserData = currentUserData.withRandomStatistics();
@@ -5821,14 +6632,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
             content: Text(
               'Random data generated!\n'
               'Day Streak: ${newUserData.dayStreak}, '
-              'Focus Hours: ${newUserData.focusHours}',
+              'Focus Hours: ${newUserData.focusHours}, '
+              'Projects: $projectCount',
             ),
             backgroundColor: const Color(0xFF00C853),
             duration: const Duration(seconds: 3),
           ),
         );
       }
-    });
+    } catch (e) {
+      setState(() {
+        _isGenerating = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error generating data: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildSettingsItem({
@@ -5905,10 +6731,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: widget.showBackButton,
+        leading: widget.showBackButton
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
         title: const Text(
           'Settings',
           style: TextStyle(

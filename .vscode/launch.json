@@ -18,7 +18,7 @@
             "request": "launch",
             "type": "dart",
             "toolArgs": [
-                "--dart-define=EMULATOR_HOST=192.168.1.12"
+                "--dart-define=EMULATOR_HOST=192.168.0.45"
             ]
         },
         {

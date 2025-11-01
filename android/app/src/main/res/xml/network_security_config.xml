@@ -1,9 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Allow cleartext traffic to development machines for Firebase emulator -->
+    <!-- Allow cleartext HTTP traffic to local development machines for Firebase emulators
+         This is safe because:
+         1. Only enabled in debug builds
+         2. Only affects local network IPs
+         3. Firebase emulators run on HTTP locally -->
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">192.168.1.12</domain>
-        <domain includeSubdomains="true">localhost</domain>
+        <!-- Android emulator special alias for host machine -->
         <domain includeSubdomains="true">10.0.2.2</domain>
+
+        <!-- iOS simulator / desktop -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+
+        <!-- Local network IP addresses (common ranges for home/office networks) -->
+        <!-- Update these if your development machine IP changes -->
+        <domain includeSubdomains="true">192.168.0.45</domain>
+        <domain includeSubdomains="true">192.168.1.12</domain>
     </domain-config>
+
+    <!-- For debugging: Allow all cleartext traffic (ONLY USE FOR DEBUGGING)
+         Uncomment the line below if you need to allow all HTTP traffic temporarily
+         Remember to comment it back out when done! -->
+    <!-- <base-config cleartextTrafficPermitted="true" /> -->
 </network-security-config>

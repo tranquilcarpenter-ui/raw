@@ -4,14 +4,23 @@ import 'dart:math' as math;
 class FocusSession {
   DateTime start;
   Duration duration;
+  String projectId; // Reference to the project
+  String? subprojectId; // Optional reference to a subproject
 
-  FocusSession({required this.start, required this.duration});
+  FocusSession({
+    required this.start,
+    required this.duration,
+    required this.projectId,
+    this.subprojectId,
+  });
 
   // Convert to JSON
   Map<String, dynamic> toJson() {
     return {
       'start': start.toIso8601String(),
       'duration': duration.inMinutes,
+      'projectId': projectId,
+      'subprojectId': subprojectId,
     };
   }
 
@@ -20,6 +29,23 @@ class FocusSession {
     return FocusSession(
       start: DateTime.parse(json['start'] as String),
       duration: Duration(minutes: json['duration'] as int),
+      projectId: json['projectId'] as String? ?? 'unset', // Default to 'unset' for backward compatibility
+      subprojectId: json['subprojectId'] as String?,
+    );
+  }
+
+  /// Copy with method for updating fields
+  FocusSession copyWith({
+    DateTime? start,
+    Duration? duration,
+    String? projectId,
+    String? subprojectId,
+  }) {
+    return FocusSession(
+      start: start ?? this.start,
+      duration: duration ?? this.duration,
+      projectId: projectId ?? this.projectId,
+      subprojectId: subprojectId ?? this.subprojectId,
     );
   }
 }
@@ -53,6 +79,7 @@ class UserData {
   bool isGeneratedData;
   DateTime? generatedAt;
   bool isPro;
+  bool currentlyFocusing; // Status indicator for active focus sessions
 
   UserData({
     // Profile
@@ -81,6 +108,7 @@ class UserData {
     this.isGeneratedData = false,
     this.generatedAt,
     this.isPro = true,
+    this.currentlyFocusing = false,
   });
 
   /// Factory constructor for a new user (default values)
@@ -156,7 +184,26 @@ class UserData {
       activityData[date] = random.nextDouble() * 8;
     }
 
-    // Generate focus sessions
+    // Generate random project IDs (3-5 projects including 'unset')
+    final projectIds = ['unset'];
+    final projectCount = 3 + random.nextInt(3); // 3-5 additional projects
+    for (int i = 1; i <= projectCount; i++) {
+      projectIds.add('project_$i');
+    }
+
+    // Generate random subproject IDs for each project (0-3 subprojects per project)
+    final Map<String, List<String>> subprojectsByProject = {};
+    for (final projectId in projectIds) {
+      if (projectId != 'unset' && random.nextBool()) {
+        final subprojectCount = 1 + random.nextInt(3); // 1-3 subprojects
+        subprojectsByProject[projectId] = List.generate(
+          subprojectCount,
+          (index) => '${projectId}_sub_$index',
+        );
+      }
+    }
+
+    // Generate focus sessions with random projects and subprojects
     final List<FocusSession> sessions = [];
     for (int day = 0; day < 60; day++) {
       final date = now.subtract(Duration(days: day));
@@ -174,9 +221,21 @@ class UserData {
         );
         final durationMinutes = 10 + random.nextInt(111);
 
+        // Randomly assign a project
+        final projectId = projectIds[random.nextInt(projectIds.length)];
+
+        // If project has subprojects, maybe assign one (50% chance)
+        String? subprojectId;
+        if (subprojectsByProject.containsKey(projectId) && random.nextBool()) {
+          final subprojects = subprojectsByProject[projectId]!;
+          subprojectId = subprojects[random.nextInt(subprojects.length)];
+        }
+
         sessions.add(FocusSession(
           start: sessionStart,
           duration: Duration(minutes: durationMinutes),
+          projectId: projectId,
+          subprojectId: subprojectId,
         ));
       }
     }
@@ -199,6 +258,7 @@ class UserData {
       isGeneratedData: true,
       generatedAt: now,
       updatedAt: now,
+      currentlyFocusing: false, // Generated data is never currently focusing
     );
   }
 
@@ -236,6 +296,7 @@ class UserData {
       isGeneratedData: false,
       generatedAt: null,
       updatedAt: now,
+      currentlyFocusing: false, // Reset focusing status
     );
   }
 
@@ -353,6 +414,7 @@ class UserData {
       'isGeneratedData': isGeneratedData,
       'generatedAt': generatedAt?.toIso8601String(),
       'isPro': isPro,
+      'currentlyFocusing': currentlyFocusing,
     };
   }
 
@@ -424,6 +486,7 @@ class UserData {
           ? DateTime.parse(json['generatedAt'] as String)
           : null,
       isPro: json['isPro'] as bool? ?? true,
+      currentlyFocusing: json['currentlyFocusing'] as bool? ?? false,
     );
   }
 
@@ -453,6 +516,7 @@ class UserData {
     bool? isGeneratedData,
     DateTime? generatedAt,
     bool? isPro,
+    bool? currentlyFocusing,
   }) {
     return UserData(
       email: email ?? this.email,
@@ -479,6 +543,7 @@ class UserData {
       isGeneratedData: isGeneratedData ?? this.isGeneratedData,
       generatedAt: generatedAt ?? this.generatedAt,
       isPro: isPro ?? this.isPro,
+      currentlyFocusing: currentlyFocusing ?? this.currentlyFocusing,
     );
   }
 }

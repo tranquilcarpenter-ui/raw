@@ -22,7 +22,11 @@
       "Bash(java -version:*)",
       "Bash(if exist \"C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot\\bin\\java.exe\" echo FoundJava17)",
       "Bash(\"C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot\\bin\\java.exe\" -version)",
-      "Bash(ipconfig:*)"
+      "Bash(ipconfig:*)",
+      "Bash(powershell -Command \"(Get-Content ''c:\\Users\\Home\\app\\lib\\user_profile_screen.dart'').Count\")",
+      "Bash(powershell -Command \"(Get-Content ''c:\\Users\\Home\\app\\lib\\main.dart'').Count\")",
+      "Bash(nul)",
+      "Bash(clip)"
     ],
     "deny": [],
     "ask": []

@@ -49,3 +49,6 @@ app.*.map.json
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+
+# Local dev configuration (contains machine-specific IPs)
+lib/dev_config.local.dart

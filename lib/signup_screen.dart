@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_service.dart';
 import 'user_data.dart';
 import 'user_data_service.dart';
+import 'project_service.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -27,7 +28,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   DateTime? _selectedBirthday;
   String? _selectedGender;
   final Map<String, String> _questionAnswers = {};
-  final List<Offset> _signaturePoints = [];
+  List<Offset> _signaturePoints = [];
 
   bool _isLoading = false;
   String _errorMessage = '';
@@ -150,6 +151,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
 
       await UserDataService.instance.saveUserData(user.uid, userData);
+
+      // Initialize default "Unset" project for the new user
+      await ProjectService.instance.initializeDefaultProject(user.uid);
 
       // Success - auth state listener will handle navigation
       if (mounted) {
@@ -943,37 +947,37 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            height: 180,
-            decoration: BoxDecoration(
-              color: const Color(0xFFC4C4C4),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: GestureDetector(
-                onPanStart: (details) {
-                  setState(() {
-                    _signaturePoints.add(details.localPosition);
-                  });
-                },
-                onPanUpdate: (details) {
-                  setState(() {
-                    _signaturePoints.add(details.localPosition);
-                  });
-                },
-                onPanEnd: (details) {
-                  setState(() {
-                    _signaturePoints.add(Offset.infinite);
-                  });
-                },
-                child: Container(
-                  color: Colors.transparent,
-                  child: CustomPaint(
-                    size: Size.infinite,
-                    painter: _SignaturePainter(_signaturePoints),
-                  ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: GestureDetector(
+              onPanStart: (details) {
+                setState(() {
+                  _signaturePoints = List.from(_signaturePoints)
+                    ..add(details.localPosition);
+                });
+              },
+              onPanUpdate: (details) {
+                setState(() {
+                  _signaturePoints = List.from(_signaturePoints)
+                    ..add(details.localPosition);
+                });
+              },
+              onPanEnd: (details) {
+                setState(() {
+                  _signaturePoints = List.from(_signaturePoints)
+                    ..add(Offset.infinite);
+                });
+              },
+              child: Container(
+                width: double.infinity,
+                height: 180,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFC4C4C4),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: CustomPaint(
+                  painter: _SignaturePainter(_signaturePoints),
+                  child: Container(),
                 ),
               ),
             ),
