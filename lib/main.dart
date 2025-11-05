@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:palette_generator/palette_generator.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-// Firebase types are accessed via `FirebaseService` where needed
 import 'firebase_service.dart';
 import 'auth_provider.dart';
 import 'auth_screen.dart';
@@ -36,6 +34,225 @@ import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 
 // Firebase initialization is managed by `FirebaseService` singleton.
+// Firebase types are accessed via `FirebaseService` where needed
+
+// ============================================================================
+// GLOBAL UI CONSTANTS
+// ============================================================================
+
+// Colors - Primary Theme
+class AppColors {
+  // Primary purple theme
+  static const Color primary = Color(0xFF8B5CF6);
+  static const Color primaryDark = Color(0xFF7C3AED);
+  static const Color primaryLight = Color(0xFFB794F6);
+
+  // Backgrounds
+  static const Color background = Color(0xFF000000);
+  static const Color backgroundElevated = Color(0xFF1C1C1E);
+  static const Color cardBackground = Color(0xFF2C2C2E);
+  static const Color cardBackgroundLight = Color(0xFF3A3A3C);
+
+  // Navigation
+  static const Color navBarGradientStart = Color(0xFF1A1A1A);
+  static const Color navBarGradientEnd = Color(0xFF121212);
+  static const Color navBarItem = Color(0xFF1D1D1D);
+
+  // Text
+  static const Color textPrimary = Colors.white;
+  static const Color textSecondary = Color(0xFF8E8E93);
+  static const Color textTertiary = Color(0xFF636366);
+
+  // Status colors
+  static const Color success = Color(0xFF30D158);
+  static const Color error = Color(0xFFFF3B30);
+  static const Color warning = Color(0xFFFF9500);
+  static const Color info = Color(0xFF06B6D4);
+
+  // Accent colors
+  static const Color gold = Color(0xFFFFD700);
+  static const Color blue = Color(0xFF4A90E2);
+  static const Color green = Color(0xFF50C878);
+
+  // Dividers and borders
+  static const Color divider = Color(0xFF38383A);
+  static const Color border = Color(0xFF48484A);
+}
+
+// Text Styles
+class AppTextStyles {
+  // Headers
+  static const TextStyle h1 = TextStyle(
+    color: AppColors.textPrimary,
+    fontSize: 32,
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w700,
+  );
+
+  static const TextStyle h2 = TextStyle(
+    color: AppColors.textPrimary,
+    fontSize: 28,
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w700,
+  );
+
+  static const TextStyle h3 = TextStyle(
+    color: AppColors.textPrimary,
+    fontSize: 24,
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w600,
+  );
+
+  static const TextStyle h4 = TextStyle(
+    color: AppColors.textPrimary,
+    fontSize: 20,
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w600,
+  );
+
+  // Body text
+  static const TextStyle bodyLarge = TextStyle(
+    color: AppColors.textPrimary,
+    fontSize: 18,
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w400,
+  );
+
+  static const TextStyle bodyMedium = TextStyle(
+    color: AppColors.textPrimary,
+    fontSize: 16,
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w400,
+  );
+
+  static const TextStyle bodySmall = TextStyle(
+    color: AppColors.textPrimary,
+    fontSize: 14,
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w400,
+  );
+
+  // Labels
+  static const TextStyle label = TextStyle(
+    color: AppColors.textSecondary,
+    fontSize: 13,
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0.5,
+  );
+
+  static const TextStyle caption = TextStyle(
+    color: AppColors.textSecondary,
+    fontSize: 12,
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w400,
+  );
+
+  // Button text
+  static const TextStyle button = TextStyle(
+    color: AppColors.textPrimary,
+    fontSize: 16,
+    fontFamily: 'Inter',
+    fontWeight: FontWeight.w600,
+  );
+}
+
+// Spacing
+class AppSpacing {
+  static const double xs = 4.0;
+  static const double sm = 8.0;
+  static const double md = 12.0;
+  static const double lg = 16.0;
+  static const double xl = 24.0;
+  static const double xxl = 32.0;
+  static const double xxxl = 48.0;
+}
+
+// Border Radius
+class AppRadius {
+  static const double sm = 8.0;
+  static const double md = 12.0;
+  static const double lg = 16.0;
+  static const double xl = 20.0;
+  static const double xxl = 24.0;
+  static const double round = 100.0;
+
+  // Common border radius objects
+  static BorderRadius small = BorderRadius.circular(sm);
+  static BorderRadius medium = BorderRadius.circular(md);
+  static BorderRadius large = BorderRadius.circular(lg);
+  static BorderRadius extraLarge = BorderRadius.circular(xl);
+  static BorderRadius extraExtraLarge = BorderRadius.circular(xxl);
+  static BorderRadius circular = BorderRadius.circular(round);
+}
+
+// Shadows
+class AppShadows {
+  static List<BoxShadow> small = [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.1),
+      blurRadius: 4,
+      offset: const Offset(0, 2),
+    ),
+  ];
+
+  static List<BoxShadow> medium = [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.15),
+      blurRadius: 8,
+      offset: const Offset(0, 4),
+    ),
+  ];
+
+  static List<BoxShadow> large = [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.2),
+      blurRadius: 16,
+      offset: const Offset(0, 8),
+    ),
+  ];
+
+  static List<BoxShadow> primaryGlow = [
+    BoxShadow(
+      color: AppColors.primary.withValues(alpha: 0.3),
+      blurRadius: 20,
+      offset: const Offset(0, 10),
+    ),
+  ];
+}
+
+// Animation Durations
+class AppDurations {
+  static const Duration fast = Duration(milliseconds: 200);
+  static const Duration normal = Duration(milliseconds: 300);
+  static const Duration slow = Duration(milliseconds: 500);
+  static const Duration verySlow = Duration(milliseconds: 1000);
+}
+
+// Common Gradients
+class AppGradients {
+  static const LinearGradient primary = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [AppColors.primary, AppColors.primaryDark],
+  );
+
+  static const LinearGradient navBar = LinearGradient(
+    begin: Alignment(0.50, 0.00),
+    end: Alignment(0.50, 1.00),
+    colors: [AppColors.navBarGradientStart, AppColors.navBarGradientEnd],
+  );
+
+  static const LinearGradient background = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [AppColors.backgroundElevated, AppColors.background],
+  );
+}
+
+// ============================================================================
+// END GLOBAL UI CONSTANTS
+// ============================================================================
 
 // Optimized helper function to build image widget from either local file or network URL
 Widget buildImageFromPath(
@@ -507,70 +724,66 @@ class _MainScreenState extends State<MainScreen>
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Center(
-          child: isProfilePicture
-              ? Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isSelected
-                          ? Colors.white
-                          : const Color(0xFF6C6C70),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: ClipOval(
-                    child: isCustomImage
-                        ? Image.file(
-                            File(iconPath),
-                            width: 28,
-                            height: 28,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(
-                                Icons.person,
-                                color: isSelected
-                                    ? Colors.white
-                                    : const Color(0xFF6C6C70),
-                                size: 22,
-                              );
-                            },
-                          )
-                        : Image.asset(
-                            iconPath,
-                            width: 28,
-                            height: 28,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(
-                                Icons.person,
-                                color: isSelected
-                                    ? Colors.white
-                                    : const Color(0xFF6C6C70),
-                                size: 22,
-                              );
-                            },
-                          ),
-                  ),
-                )
-              : useMaterialIcon && materialIcon != null
-              ? Icon(
-                  materialIcon,
-                  color: isSelected ? Colors.white : const Color(0xFF6C6C70),
-                  size: 35,
-                )
-              : SvgPicture.asset(
-                  iconPath,
-                  width: 28,
-                  height: 28,
-                  colorFilter: ColorFilter.mode(
-                    isSelected ? Colors.white : const Color(0xFF6C6C70),
-                    BlendMode.srcIn,
+        child: isProfilePicture
+            ? Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected ? Colors.white : const Color(0xFF6C6C70),
+                    width: 1.5,
                   ),
                 ),
-        ),
+                child: ClipOval(
+                  child: isCustomImage
+                      ? Image.file(
+                          File(iconPath),
+                          width: 24,
+                          height: 24,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              Icons.person,
+                              color: isSelected
+                                  ? Colors.white
+                                  : const Color(0xFF6C6C70),
+                              size: 18,
+                            );
+                          },
+                        )
+                      : Image.asset(
+                          iconPath,
+                          width: 24,
+                          height: 24,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              Icons.person,
+                              color: isSelected
+                                  ? Colors.white
+                                  : const Color(0xFF6C6C70),
+                              size: 18,
+                            );
+                          },
+                        ),
+                ),
+              )
+            : useMaterialIcon && materialIcon != null
+            ? Icon(
+                materialIcon,
+                color: isSelected ? Colors.white : const Color(0xFF6C6C70),
+                size: 28,
+              )
+            : SvgPicture.asset(
+                iconPath,
+                width: 24,
+                height: 24,
+                colorFilter: ColorFilter.mode(
+                  isSelected ? Colors.white : const Color(0xFF6C6C70),
+                  BlendMode.srcIn,
+                ),
+              ),
       ),
     );
   }
@@ -584,7 +797,7 @@ class _MainScreenState extends State<MainScreen>
           onScrollDirectionChanged: _onScrollDirectionChanged,
         );
       case 2:
-        return SettingsScreen(
+        return ProfileScreen(
           onScrollDirectionChanged: _onScrollDirectionChanged,
         );
       default:
@@ -656,34 +869,44 @@ class _MainScreenState extends State<MainScreen>
                     ),
                     // Navigation bar
                     Container(
-                      margin: const EdgeInsets.fromLTRB(30, 0, 30, 50),
-                      width: 358,
-                      height: 53,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1D1D1D),
-                        borderRadius: BorderRadius.circular(20),
+                      width: double.infinity,
+                      height: 65,
+                      decoration: const ShapeDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment(0.50, 0.00),
+                          end: Alignment(0.50, 1.00),
+                          colors: [Color(0xFF1A1A1A), Color(0xFF121212)],
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(27),
+                            topRight: Radius.circular(27),
+                          ),
+                        ),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _buildNavItem(
-                            'assets/images/Icons/timericon.svg',
-                            0,
-                            'Focus',
-                          ),
-                          _buildNavItem(
-                            'assets/images/Icons/groupiconlight.svg',
-                            1,
-                            'Community',
-                          ),
-                          _buildNavItem(
-                            '',
-                            2,
-                            'Settings',
-                            useMaterialIcon: true,
-                            materialIcon: Icons.settings,
-                          ),
-                        ],
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 0, bottom: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            _buildNavItem(
+                              'assets/images/Icons/sandtimericon.svg',
+                              0,
+                              'Focus',
+                            ),
+                            _buildNavItem(
+                              'assets/images/Icons/groupiconlight.svg',
+                              1,
+                              'Community',
+                            ),
+                            _buildNavItem(
+                              'assets/images/Icons/profileicon.svg',
+                              2,
+                              'Profile',
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -716,13 +939,11 @@ class _FocusScreenState extends State<FocusScreen>
   late AnimationController _timerScaleController;
   late Animation<double> _timerScaleAnimation;
 
-  // Color extraction
-  List<Color> _paletteColors = [];
-
   // Project tracking
   String _selectedProjectId = 'unset';
   String? _selectedSubprojectId;
   String _selectedProjectName = 'Unset';
+  String _selectedProjectEmoji = '📝'; // Default emoji for Unset project
 
   @override
   void initState() {
@@ -738,31 +959,6 @@ class _FocusScreenState extends State<FocusScreen>
     _timerScaleAnimation = Tween<double>(begin: 1.0, end: 1.5).animate(
       CurvedAnimation(parent: _timerScaleController, curve: Curves.easeInOut),
     );
-    _extractImageColors();
-  }
-
-  Future<void> _extractImageColors() async {
-    final PaletteGenerator paletteGenerator =
-        await PaletteGenerator.fromImageProvider(
-          const AssetImage('assets/images/lava.png'),
-          maximumColorCount: 20,
-        );
-
-    setState(() {
-      // Collect multiple colors for gradient
-      _paletteColors = [
-        paletteGenerator.vibrantColor?.color,
-        paletteGenerator.lightVibrantColor?.color,
-        paletteGenerator.darkVibrantColor?.color,
-        paletteGenerator.mutedColor?.color,
-        paletteGenerator.lightMutedColor?.color,
-      ].whereType<Color>().toList();
-
-      // Fallback colors if extraction fails
-      if (_paletteColors.isEmpty) {
-        _paletteColors = [const Color(0xFF4A90E2), const Color(0xFF50C878)];
-      }
-    });
   }
 
   @override
@@ -888,10 +1084,16 @@ class _FocusScreenState extends State<FocusScreen>
   }
 
   void _togglePicker() {
+    debugPrint(
+      '🎯 _togglePicker called, _isRunning=$_isRunning, _isPickerVisible=$_isPickerVisible',
+    );
     if (!_isRunning) {
       setState(() {
         _isPickerVisible = !_isPickerVisible;
+        debugPrint('🎯 Picker toggled to: $_isPickerVisible');
       });
+    } else {
+      debugPrint('🎯 Timer is running, ignoring toggle');
     }
   }
 
@@ -910,7 +1112,7 @@ class _FocusScreenState extends State<FocusScreen>
         currentProjectId: _selectedProjectId,
         currentSubprojectId: _selectedSubprojectId,
         onProjectSelected: (projectId, subprojectId) async {
-          // Load the project to get its name
+          // Load the project to get its name and emoji
           final userId = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
           if (userId != null) {
             final project = await ProjectService.instance.loadProject(
@@ -921,6 +1123,7 @@ class _FocusScreenState extends State<FocusScreen>
               _selectedProjectId = projectId;
               _selectedSubprojectId = subprojectId;
               _selectedProjectName = project?.name ?? 'Unset';
+              _selectedProjectEmoji = project?.emoji ?? '📝';
             });
           }
         },
@@ -939,48 +1142,39 @@ class _FocusScreenState extends State<FocusScreen>
       selectedIndex = 11; // Default to 60 minutes (index 11)
     }
 
-    return GestureDetector(
-      onTap: _togglePicker,
-      child: SizedBox(
-        height: 150, // 3 items with proper spacing
-        child: CupertinoPicker(
-          itemExtent: 50, // Height of each item
-          scrollController: FixedExtentScrollController(
-            initialItem: selectedIndex,
-          ),
-          selectionOverlay: GestureDetector(
-            onTap: _togglePicker,
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.symmetric(
-                  horizontal: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    width: 0,
-                  ),
-                ),
+    return SizedBox(
+      height: 150, // 3 items with proper spacing
+      child: CupertinoPicker(
+        itemExtent: 50, // Height of each item
+        scrollController: FixedExtentScrollController(
+          initialItem: selectedIndex,
+        ),
+        selectionOverlay: Container(
+          decoration: BoxDecoration(
+            border: Border.symmetric(
+              horizontal: BorderSide(
+                color: Colors.white.withValues(alpha: 0.2),
+                width: 0,
               ),
             ),
           ),
-          onSelectedItemChanged: (int index) {
-            _onPickerChanged(minuteOptions[index]);
-          },
-          children: minuteOptions.map((minutes) {
-            return GestureDetector(
-              onTap: _togglePicker,
-              child: Center(
-                child: Text(
-                  '${minutes.toString().padLeft(2, '0')}:00',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 38,
-                    fontFamily: 'Inter',
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
         ),
+        onSelectedItemChanged: (int index) {
+          _onPickerChanged(minuteOptions[index]);
+        },
+        children: minuteOptions.map((minutes) {
+          return Center(
+            child: Text(
+              '${minutes.toString().padLeft(2, '0')}:00',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 38,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -1095,44 +1289,71 @@ class _FocusScreenState extends State<FocusScreen>
                   ),
                 ),
 
-                // Timer text and picker - Centered
+                // Progress circle - Centered lower (drawn first so it's behind interactive elements)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: screenHeight * 0.31, // Moved lower to 31% from top
+                  child: Center(
+                    child: RepaintBoundary(
+                      child: SizedBox(
+                        width: 270,
+                        height: 270,
+                        child: CustomPaint(
+                          painter: CircularProgressPainter(
+                            progress: progress,
+                            isRunning: _isRunning,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Timer picker - Centered in the circle
                 if (!_isRunning && _isPickerVisible)
                   Positioned(
                     left: 0,
                     right: 0,
                     top:
                         screenHeight *
-                        0.522, // Adjusted to center the 150px picker
-                    child: GestureDetector(
-                      onTap: _togglePicker,
-                      child: Center(child: _buildTimePicker()),
-                    ),
+                        0.37, // Adjusted to center the 150px picker in new circle position
+                    child: Center(child: _buildTimePicker()),
                   ),
 
-                // Timer text - Centered
-                if (!_isPickerVisible || _isRunning)
+                // Timer text - Centered in the circle (always visible when not running)
+                if (!_isRunning)
                   Positioned(
                     left: 0,
                     right: 0,
-                    top: screenHeight * 0.570, // 504/844 ≈ 0.597
-                    child: GestureDetector(
-                      onTap: _togglePicker,
-                      child: Center(
-                        child: AnimatedBuilder(
-                          animation: _timerScaleAnimation,
-                          builder: (context, child) {
-                            return Transform.scale(
-                              scale: _timerScaleAnimation.value,
-                              child: child,
-                            );
-                          },
-                          child: Text(
-                            '${(_remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_remainingSeconds % 60).toString().padLeft(2, '0')}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 45,
-                              fontFamily: 'Inter',
-                              fontWeight: FontWeight.w400,
+                    top:
+                        screenHeight *
+                        0.37, // Adjusted to center in the new circle position
+                    child: Center(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _togglePicker,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 50,
+                            vertical: 20,
+                          ),
+                          child: AnimatedBuilder(
+                            animation: _timerScaleAnimation,
+                            builder: (context, child) {
+                              return Transform.scale(
+                                scale: _timerScaleAnimation.value,
+                                child: child,
+                              );
+                            },
+                            child: Text(
+                              '${(_remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_remainingSeconds % 60).toString().padLeft(2, '0')}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 45,
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w400,
+                              ),
                             ),
                           ),
                         ),
@@ -1145,7 +1366,8 @@ class _FocusScreenState extends State<FocusScreen>
                   Positioned(
                     left: 0,
                     right: 0,
-                    top: screenHeight * 0.723, // 610/844 ≈ 0.723
+                    top:
+                        screenHeight * 0.72, // Adjusted for new circle position
                     child: Center(
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1206,7 +1428,8 @@ class _FocusScreenState extends State<FocusScreen>
                   Positioned(
                     left: 0,
                     right: 0,
-                    top: screenHeight * 0.723, // 610/844 ≈ 0.723
+                    top:
+                        screenHeight * 0.72, // Adjusted for new circle position
                     child: Center(
                       child: GestureDetector(
                         onTap: _startTimer,
@@ -1214,7 +1437,7 @@ class _FocusScreenState extends State<FocusScreen>
                           width: 185,
                           height: 55,
                           decoration: ShapeDecoration(
-                            color: const Color(0xFF1D1D1D),
+                            color: const Color(0xFF1C1C1C),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(17),
                             ),
@@ -1236,256 +1459,208 @@ class _FocusScreenState extends State<FocusScreen>
                     ),
                   ),
 
-                // Project selector button - Below start/stop buttons
+                // Project selector button - Top of the circle
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 100,
+                  top:
+                      screenHeight *
+                      0.245, // Positioned at the top edge of the circle
                   child: Center(
                     child: GestureDetector(
                       onTap: _isRunning ? null : _showProjectSelector,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1D1D1D),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.folder_outlined,
-                              color: Color(0xFF007AFF),
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _selectedProjectName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontFamily: 'Inter',
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                            if (!_isRunning) ...[
-                              const SizedBox(width: 4),
-                              const Icon(
-                                Icons.arrow_drop_down,
-                                color: Color(0xFF8E8E93),
-                                size: 20,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Progress circle - Centered
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: screenHeight * 0.135, // 114/844 ≈ 0.135
-                  child: Center(
-                    child: RepaintBoundary(
-                      child: SizedBox(
-                        width: 227,
-                        height: 227,
-                        child: CustomPaint(
-                          painter: CircularProgressPainter(
-                            progress: progress,
-                            isRunning: _isRunning,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Welcome message - 16px from left, 50px from top
-                Positioned(
-                  left: 16,
-                  top: 50,
-                  right: 120, // Leave space for profile picture on the right
-                  child: Builder(
-                    builder: (context) {
-                      final userDataProvider = UserDataProvider.of(context);
-                      final userData =
-                          userDataProvider?.userData ??
-                          UserData.newUser(
-                            email: 'guest@example.com',
-                            fullName: 'User',
-                          );
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
-                            'Welcome back,',
-                            style: TextStyle(
-                              color: Color(0xFF8E8E93),
-                              fontSize: 13,
-                              fontFamily: 'Inter',
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                          const SizedBox(height: 1),
                           Text(
-                            userData.fullName,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            _selectedProjectEmoji,
+                            style: const TextStyle(fontSize: 18),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _selectedProjectName,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.9),
                               fontSize: 16,
                               fontFamily: 'Inter',
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w400,
+                              letterSpacing: 0.2,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
-                      );
-                    },
+                      ),
+                    ),
                   ),
                 ),
 
-                // Profile picture and streak counter - 16px from right, 50px from top
+                // Streak and Calendar Card - Top center
                 Positioned(
-                  right: 16,
                   top: 50,
-                  child: Builder(
-                    builder: (context) {
-                      final profileImageProvider = ProfileImageProvider.of(
-                        context,
-                      );
-                      final profileImagePath =
-                          profileImageProvider?.profileImagePath;
-                      final userDataProvider = UserDataProvider.of(context);
-                      final userData =
-                          userDataProvider?.userData ??
-                          UserData.newUser(
-                            email: 'guest@example.com',
-                            fullName: 'User',
-                          );
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Builder(
+                      builder: (context) {
+                        final userDataProvider = UserDataProvider.of(context);
+                        final userData =
+                            userDataProvider?.userData ??
+                            UserData.newUser(
+                              email: 'guest@example.com',
+                              fullName: 'User',
+                            );
 
-                      return Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Streak counter with Pro badge
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  ShaderMask(
-                                    shaderCallback: (bounds) =>
-                                        const LinearGradient(
-                                          colors: [
-                                            Color(0xFFE68510),
-                                            Colors.white,
-                                          ],
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
-                                        ).createShader(bounds),
-                                    child: Text(
-                                      '${userData.dayStreak}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 15,
-                                        fontFamily: 'Inter',
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 0),
-                                  Image.asset(
-                                    'assets/images/Icons/streakicon.png',
-                                    width: 20,
-                                    height: 20,
-                                    fit: BoxFit.contain,
-                                  ),
-                                ],
-                              ),
-                              if (userData.isPro) ...[
-                                const SizedBox(height: 2),
-                                const ProBadge(),
-                              ],
-                            ],
+                        // Get current week days
+                        final now = DateTime.now();
+                        final weekStart = now.subtract(
+                          Duration(days: now.weekday - 1),
+                        );
+                        final weekDays = List.generate(7, (index) {
+                          return weekStart.add(Duration(days: index));
+                        });
+
+                        return Container(
+                          width: 248,
+                          height: 65,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 0,
+                            vertical: 0,
                           ),
-                          const SizedBox(width: 12),
-                          // Profile picture with status indicator
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => ProfileScreen(
-                                    onScrollDirectionChanged: null,
+                          decoration: ShapeDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment(0.50, -0.00),
+                              end: Alignment(0.50, 1.00),
+                              colors: [Color(0xFF1A1A1A), Color(0xFF121212)],
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(17),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: weekDays.map((day) {
+                              final isToday =
+                                  day.day == now.day &&
+                                  day.month == now.month &&
+                                  day.year == now.year;
+
+                              // Check if this specific day has any completed sessions
+                              final dayNormalized = DateTime(
+                                day.year,
+                                day.month,
+                                day.day,
+                              );
+                              final hasCompletedSession = userData.focusSessions
+                                  .any((session) {
+                                    final sessionDay = DateTime(
+                                      session.start.year,
+                                      session.start.month,
+                                      session.start.day,
+                                    );
+                                    return sessionDay.isAtSameMomentAs(
+                                      dayNormalized,
+                                    );
+                                  });
+
+                              // Show lit flame only for days with completed sessions
+                              final hasStreak = hasCompletedSession;
+
+                              return SizedBox(
+                                width: 30,
+                                child: Center(
+                                  child: Container(
+                                    padding: isToday
+                                        ? const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 4,
+                                          )
+                                        : null,
+                                    decoration: isToday
+                                        ? ShapeDecoration(
+                                            gradient: const LinearGradient(
+                                              begin: Alignment(0.50, -0.00),
+                                              end: Alignment(0.50, 1.00),
+                                              colors: [
+                                                Color(0x199A9A9A),
+                                                Color(0x19ABABAB),
+                                              ],
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                          )
+                                        : null,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        // Flame icon
+                                        SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: hasStreak
+                                              ? Image.asset(
+                                                  'assets/images/Icons/streakicon.png',
+                                                  width: 18,
+                                                  height: 18,
+                                                  fit: BoxFit.contain,
+                                                )
+                                              : Image.asset(
+                                                  'assets/images/Icons/streakicongrey.png',
+                                                  width: 18,
+                                                  height: 18,
+                                                  fit: BoxFit.contain,
+                                                ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        // Day name (Mon, Tue, etc.)
+                                        Text(
+                                          [
+                                            'Mon',
+                                            'Tue',
+                                            'Wed',
+                                            'Thu',
+                                            'Fri',
+                                            'Sat',
+                                            'Sun',
+                                          ][day.weekday - 1],
+                                          style: TextStyle(
+                                            color: isToday
+                                                ? Colors.white
+                                                : Colors.white70,
+                                            fontSize: 9,
+                                            fontFamily: 'Inter',
+                                            fontWeight: isToday
+                                                ? FontWeight.w600
+                                                : FontWeight.w400,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 1),
+                                        // Day number
+                                        Text(
+                                          '${day.day}',
+                                          style: TextStyle(
+                                            color: isToday
+                                                ? Colors.white
+                                                : Colors.white70,
+                                            fontSize: 13,
+                                            fontFamily: 'Inter',
+                                            fontWeight: isToday
+                                                ? FontWeight.w600
+                                                : FontWeight.w400,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               );
-                            },
-                            child: Stack(
-                              children: [
-                                Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Color(0xFF2C2C2E),
-                                  ),
-                                  child: ClipOval(
-                                    child: profileImagePath != null
-                                        ? buildImageFromPath(
-                                            profileImagePath,
-                                            fit: BoxFit.cover,
-                                            errorWidget: const Icon(
-                                              Icons.person,
-                                              color: Color(0xFF8E8E93),
-                                              size: 28,
-                                            ),
-                                          )
-                                        : const Icon(
-                                            Icons.person,
-                                            color: Color(0xFF8E8E93),
-                                            size: 28,
-                                          ),
-                                  ),
-                                ),
-                                // Online/offline status indicator
-                                Positioned(
-                                  right: 2,
-                                  bottom: 2,
-                                  child: Container(
-                                    width: 12,
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: const Color.fromARGB(
-                                        255,
-                                        96,
-                                        221,
-                                        101,
-                                      ), // Green for online, use Colors.grey for offline
-                                      border: Border.all(
-                                        color: const Color(0xFF1C1C1E),
-                                        width: 2,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                            }).toList(),
                           ),
-                        ],
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                 ),
               ],
@@ -1508,25 +1683,54 @@ class CircularProgressPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
+    final strokeRadius = radius - 17.5;
 
-    // Progress arc only - no background strokes
-    final progressPaint = Paint()
+    // Background track circle (always visible with consistent styling)
+    final backgroundPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round;
+      ..strokeWidth = 4
+      ..color = const Color(0xFF2A2A2A);
 
-    progressPaint.shader = const SweepGradient(
-      startAngle: -math.pi / 2,
-      colors: [Color(0xFFFFFFFF), Color(0xFFCCCCCC), Color(0xFFFFFFFF)],
-    ).createShader(Rect.fromCircle(center: center, radius: radius));
+    canvas.drawCircle(center, strokeRadius, backgroundPaint);
 
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius - 17.5),
-      -math.pi / 2,
-      2 * math.pi * progress,
-      false,
-      progressPaint,
-    );
+    // Only draw progress arc when timer is running
+    if (isRunning && progress > 0) {
+      // Outer glow effect for progress arc
+      final glowPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 12
+        ..strokeCap = StrokeCap.round
+        ..color = Colors.white.withValues(alpha: 0.2)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: strokeRadius),
+        -math.pi / 2,
+        2 * math.pi * progress,
+        false,
+        glowPaint,
+      );
+
+      // Main progress arc with gradient
+      final progressPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round;
+
+      progressPaint.shader = const SweepGradient(
+        startAngle: -math.pi / 2,
+        colors: [Color(0xFFFFFFFF), Color(0xFFE0E0E0), Color(0xFFFFFFFF)],
+        stops: [0.0, 0.5, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: strokeRadius));
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: strokeRadius),
+        -math.pi / 2,
+        2 * math.pi * progress,
+        false,
+        progressPaint,
+      );
+    }
   }
 
   @override
@@ -4005,7 +4209,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // Build the statistics card for sharing
-  Widget _buildShareableStatisticsCard(UserData userData, String? profileImagePath) {
+  Widget _buildShareableStatisticsCard(
+    UserData userData,
+    String? profileImagePath,
+  ) {
     return Container(
       width: 400,
       padding: const EdgeInsets.all(24),
@@ -4013,16 +4220,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1C1C1E),
-            Color(0xFF000000),
-          ],
+          colors: [Color(0xFF1C1C1E), Color(0xFF000000)],
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFF8B5CF6),
-          width: 2,
-        ),
+        border: Border.all(color: const Color(0xFF8B5CF6), width: 2),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -4035,10 +4236,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 height: 60,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFF8B5CF6),
-                    width: 2,
-                  ),
+                  border: Border.all(color: const Color(0xFF8B5CF6), width: 2),
                 ),
                 child: ClipOval(
                   child: profileImagePath != null
@@ -4048,11 +4246,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           width: 60,
                           height: 60,
                         )
-                      : const Icon(
-                          Icons.person,
-                          color: Colors.white,
-                          size: 30,
-                        ),
+                      : const Icon(Icons.person, color: Colors.white, size: 30),
                 ),
               ),
               const SizedBox(width: 16),
@@ -4170,10 +4364,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFF8B5CF6),
-                    width: 1,
-                  ),
+                  border: Border.all(color: const Color(0xFF8B5CF6), width: 1),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
@@ -4231,10 +4422,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF1C1C1E),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: const Color(0xFF2C2C2E),
-                width: 1,
-              ),
+              border: Border.all(color: const Color(0xFF2C2C2E), width: 1),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -4270,10 +4458,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.memory(
-                      imageBytes,
-                      fit: BoxFit.contain,
-                    ),
+                    child: Image.memory(imageBytes, fit: BoxFit.contain),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -4288,15 +4473,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             try {
                               // Save to temporary directory
                               final tempDir = await getTemporaryDirectory();
-                              final filePath = '${tempDir.path}/focus_stats_${DateTime.now().millisecondsSinceEpoch}.png';
+                              final filePath =
+                                  '${tempDir.path}/focus_stats_${DateTime.now().millisecondsSinceEpoch}.png';
                               final file = File(filePath);
                               await file.writeAsBytes(imageBytes);
 
                               // Share the file
-                              await Share.shareXFiles(
-                                [XFile(filePath)],
-                                text: 'Check out my Focus App statistics!',
-                              );
+                              await Share.shareXFiles([
+                                XFile(filePath),
+                              ], text: 'Check out my Focus App statistics!');
 
                               if (context.mounted) {
                                 Navigator.pop(context);
@@ -4341,8 +4526,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             try {
                               // Save to temporary directory first (no permissions needed)
                               final tempDir = await getTemporaryDirectory();
-                              final fileName = 'focus_stats_${DateTime.now().millisecondsSinceEpoch}.png';
-                              final filePath = path.join(tempDir.path, fileName);
+                              final fileName =
+                                  'focus_stats_${DateTime.now().millisecondsSinceEpoch}.png';
+                              final filePath = path.join(
+                                tempDir.path,
+                                fileName,
+                              );
                               final file = File(filePath);
 
                               debugPrint('💾 Saving to temp: $filePath');
@@ -4351,23 +4540,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                               // Use share functionality to save/export the file
                               // This lets the user choose where to save without needing permissions
-                              final result = await Share.shareXFiles(
-                                [XFile(filePath)],
-                                text: 'Focus App Statistics',
-                              );
+                              final result = await Share.shareXFiles([
+                                XFile(filePath),
+                              ], text: 'Focus App Statistics');
 
                               debugPrint('📤 Share result: ${result.status}');
 
                               if (context.mounted) {
-                                if (result.status == ShareResultStatus.success) {
+                                if (result.status ==
+                                    ShareResultStatus.success) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('Image saved successfully!'),
+                                      content: Text(
+                                        'Image saved successfully!',
+                                      ),
                                       backgroundColor: Color(0xFF30D158),
                                     ),
                                   );
                                   Navigator.pop(context);
-                                } else if (result.status == ShareResultStatus.dismissed) {
+                                } else if (result.status ==
+                                    ShareResultStatus.dismissed) {
                                   // User cancelled, just close the dialog
                                   Navigator.pop(context);
                                 }
@@ -4377,7 +4569,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text('Failed to save: ${e.toString()}'),
+                                    content: Text(
+                                      'Failed to save: ${e.toString()}',
+                                    ),
                                     backgroundColor: const Color(0xFFFF3B30),
                                   ),
                                 );
@@ -4777,34 +4971,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                       ),
-                      // Back button on banner (top left)
+                      // Share button on banner (top left)
                       Positioned(
                         top: 50,
                         left: 16,
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.pop(context);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(
-                                0xFF000000,
-                              ).withValues(alpha: 0.5),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.arrow_back,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Share button on banner (top left, next to back button)
-                      Positioned(
-                        top: 50,
-                        left: 68,
                         child: GestureDetector(
                           onTap: _shareStatistics,
                           child: Container(
@@ -4817,6 +4987,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             child: const Icon(
                               Icons.share,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Settings button on banner (top right)
+                      Positioned(
+                        top: 50,
+                        right: 16,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => SettingsScreen(
+                                  onScrollDirectionChanged:
+                                      (isScrollingDown) {},
+                                ),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF000000,
+                              ).withValues(alpha: 0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.settings,
                               color: Colors.white,
                               size: 22,
                             ),
@@ -8261,7 +8463,9 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                   // Open app settings
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Open device settings to manage permissions'),
+                      content: Text(
+                        'Open device settings to manage permissions',
+                      ),
                       backgroundColor: Color(0xFF8B5CF6),
                     ),
                   );
@@ -8276,7 +8480,9 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                   // Open notification settings
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Open device settings to manage permissions'),
+                      content: Text(
+                        'Open device settings to manage permissions',
+                      ),
                       backgroundColor: Color(0xFF8B5CF6),
                     ),
                   );
@@ -8343,11 +8549,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
               color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(
-              icon,
-              color: const Color(0xFF8B5CF6),
-              size: 22,
-            ),
+            child: Icon(icon, color: const Color(0xFF8B5CF6), size: 22),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -8410,11 +8612,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                 color: color.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 22,
-              ),
+              child: Icon(icon, color: color, size: 22),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -8465,20 +8663,14 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
         ),
         content: const Text(
           'We\'ll prepare a file with all your account data and send it to your email. This may take a few minutes.',
-          style: TextStyle(
-            color: Color(0xFF8E8E93),
-            fontFamily: 'Inter',
-          ),
+          style: TextStyle(color: Color(0xFF8E8E93), fontFamily: 'Inter'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'Cancel',
-              style: TextStyle(
-                color: Color(0xFF8E8E93),
-                fontFamily: 'Inter',
-              ),
+              style: TextStyle(color: Color(0xFF8E8E93), fontFamily: 'Inter'),
             ),
           ),
           TextButton(
@@ -8520,20 +8712,14 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
         ),
         content: const Text(
           'This action cannot be undone. All your data, including focus sessions, achievements, and friends will be permanently deleted.',
-          style: TextStyle(
-            color: Color(0xFF8E8E93),
-            fontFamily: 'Inter',
-          ),
+          style: TextStyle(color: Color(0xFF8E8E93), fontFamily: 'Inter'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'Cancel',
-              style: TextStyle(
-                color: Color(0xFF8E8E93),
-                fontFamily: 'Inter',
-              ),
+              style: TextStyle(color: Color(0xFF8E8E93), fontFamily: 'Inter'),
             ),
           ),
           TextButton(
@@ -8566,10 +8752,12 @@ class NotificationsSettingsScreen extends StatefulWidget {
   const NotificationsSettingsScreen({super.key});
 
   @override
-  State<NotificationsSettingsScreen> createState() => _NotificationsSettingsScreenState();
+  State<NotificationsSettingsScreen> createState() =>
+      _NotificationsSettingsScreenState();
 }
 
-class _NotificationsSettingsScreenState extends State<NotificationsSettingsScreen> {
+class _NotificationsSettingsScreenState
+    extends State<NotificationsSettingsScreen> {
   // Notification settings state
   bool _notificationsEnabled = true;
   bool _friendRequestNotifications = true;
@@ -8643,11 +8831,13 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 title: 'Friend Requests',
                 subtitle: 'When someone sends you a friend request',
                 value: _friendRequestNotifications,
-                onChanged: _notificationsEnabled ? (value) {
-                  setState(() {
-                    _friendRequestNotifications = value;
-                  });
-                } : null,
+                onChanged: _notificationsEnabled
+                    ? (value) {
+                        setState(() {
+                          _friendRequestNotifications = value;
+                        });
+                      }
+                    : null,
                 icon: Icons.person_add_outlined,
               ),
 
@@ -8655,11 +8845,13 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 title: 'Group Invites',
                 subtitle: 'When you\'re invited to a group',
                 value: _groupInviteNotifications,
-                onChanged: _notificationsEnabled ? (value) {
-                  setState(() {
-                    _groupInviteNotifications = value;
-                  });
-                } : null,
+                onChanged: _notificationsEnabled
+                    ? (value) {
+                        setState(() {
+                          _groupInviteNotifications = value;
+                        });
+                      }
+                    : null,
                 icon: Icons.group_outlined,
               ),
 
@@ -8682,11 +8874,13 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 title: 'Focus Started',
                 subtitle: 'When you start a focus session',
                 value: _focusStartNotifications,
-                onChanged: _notificationsEnabled ? (value) {
-                  setState(() {
-                    _focusStartNotifications = value;
-                  });
-                } : null,
+                onChanged: _notificationsEnabled
+                    ? (value) {
+                        setState(() {
+                          _focusStartNotifications = value;
+                        });
+                      }
+                    : null,
                 icon: Icons.play_circle_outline,
               ),
 
@@ -8694,11 +8888,13 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 title: 'Focus Completed',
                 subtitle: 'When you complete a focus session',
                 value: _focusEndNotifications,
-                onChanged: _notificationsEnabled ? (value) {
-                  setState(() {
-                    _focusEndNotifications = value;
-                  });
-                } : null,
+                onChanged: _notificationsEnabled
+                    ? (value) {
+                        setState(() {
+                          _focusEndNotifications = value;
+                        });
+                      }
+                    : null,
                 icon: Icons.check_circle_outline,
               ),
 
@@ -8706,11 +8902,13 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 title: 'Achievements Unlocked',
                 subtitle: 'When you unlock a new achievement',
                 value: _achievementNotifications,
-                onChanged: _notificationsEnabled ? (value) {
-                  setState(() {
-                    _achievementNotifications = value;
-                  });
-                } : null,
+                onChanged: _notificationsEnabled
+                    ? (value) {
+                        setState(() {
+                          _achievementNotifications = value;
+                        });
+                      }
+                    : null,
                 icon: Icons.emoji_events_outlined,
               ),
 
@@ -8718,11 +8916,13 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 title: 'Streak Reminders',
                 subtitle: 'Daily reminder to maintain your streak',
                 value: _streakReminderNotifications,
-                onChanged: _notificationsEnabled ? (value) {
-                  setState(() {
-                    _streakReminderNotifications = value;
-                  });
-                } : null,
+                onChanged: _notificationsEnabled
+                    ? (value) {
+                        setState(() {
+                          _streakReminderNotifications = value;
+                        });
+                      }
+                    : null,
                 icon: Icons.local_fire_department_outlined,
               ),
 
@@ -8730,11 +8930,13 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 title: 'Daily Summary',
                 subtitle: 'End of day focus summary',
                 value: _dailySummaryNotifications,
-                onChanged: _notificationsEnabled ? (value) {
-                  setState(() {
-                    _dailySummaryNotifications = value;
-                  });
-                } : null,
+                onChanged: _notificationsEnabled
+                    ? (value) {
+                        setState(() {
+                          _dailySummaryNotifications = value;
+                        });
+                      }
+                    : null,
                 icon: Icons.summarize_outlined,
               ),
 
@@ -8757,11 +8959,13 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 title: 'Sound',
                 subtitle: 'Play sound for notifications',
                 value: _soundEnabled,
-                onChanged: _notificationsEnabled ? (value) {
-                  setState(() {
-                    _soundEnabled = value;
-                  });
-                } : null,
+                onChanged: _notificationsEnabled
+                    ? (value) {
+                        setState(() {
+                          _soundEnabled = value;
+                        });
+                      }
+                    : null,
                 icon: Icons.volume_up_outlined,
               ),
 
@@ -8769,11 +8973,13 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 title: 'Vibration',
                 subtitle: 'Vibrate for notifications',
                 value: _vibrationEnabled,
-                onChanged: _notificationsEnabled ? (value) {
-                  setState(() {
-                    _vibrationEnabled = value;
-                  });
-                } : null,
+                onChanged: _notificationsEnabled
+                    ? (value) {
+                        setState(() {
+                          _vibrationEnabled = value;
+                        });
+                      }
+                    : null,
                 icon: Icons.vibration_outlined,
               ),
 
@@ -8781,11 +8987,13 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 title: 'Badge',
                 subtitle: 'Show notification badges on app icon',
                 value: _badgeEnabled,
-                onChanged: _notificationsEnabled ? (value) {
-                  setState(() {
-                    _badgeEnabled = value;
-                  });
-                } : null,
+                onChanged: _notificationsEnabled
+                    ? (value) {
+                        setState(() {
+                          _badgeEnabled = value;
+                        });
+                      }
+                    : null,
                 icon: Icons.lens_outlined,
               ),
 
@@ -8844,15 +9052,15 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
             height: 40,
             decoration: BoxDecoration(
               color: isMain
-                ? const Color(0xFF8B5CF6).withValues(alpha: 0.3)
-                : const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                  ? const Color(0xFF8B5CF6).withValues(alpha: 0.3)
+                  : const Color(0xFF8B5CF6).withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
               icon,
               color: isDisabled
-                ? const Color(0xFF8B5CF6).withValues(alpha: 0.5)
-                : const Color(0xFF8B5CF6),
+                  ? const Color(0xFF8B5CF6).withValues(alpha: 0.5)
+                  : const Color(0xFF8B5CF6),
               size: 22,
             ),
           ),
@@ -8865,8 +9073,8 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                   title,
                   style: TextStyle(
                     color: isDisabled
-                      ? Colors.white.withValues(alpha: 0.5)
-                      : Colors.white,
+                        ? Colors.white.withValues(alpha: 0.5)
+                        : Colors.white,
                     fontSize: 16,
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w600,
@@ -8877,8 +9085,8 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                   subtitle,
                   style: TextStyle(
                     color: isDisabled
-                      ? const Color(0xFF8E8E93).withValues(alpha: 0.5)
-                      : const Color(0xFF8E8E93),
+                        ? const Color(0xFF8E8E93).withValues(alpha: 0.5)
+                        : const Color(0xFF8E8E93),
                     fontSize: 13,
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w400,
@@ -8919,11 +9127,7 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                 color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
-                icon,
-                color: const Color(0xFF8B5CF6),
-                size: 22,
-              ),
+              child: Icon(icon, color: const Color(0xFF8B5CF6), size: 22),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -9001,10 +9205,7 @@ class AboutScreen extends StatelessWidget {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF8B5CF6),
-                      Color(0xFF7C3AED),
-                    ],
+                    colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
                   ),
                   borderRadius: BorderRadius.circular(22),
                   boxShadow: [
@@ -9046,10 +9247,7 @@ class AboutScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFF8B5CF6),
-                    width: 1,
-                  ),
+                  border: Border.all(color: const Color(0xFF8B5CF6), width: 1),
                 ),
                 child: const Text(
                   'Version 1.0.0 (Build 1)',
@@ -9157,10 +9355,7 @@ class AboutScreen extends StatelessWidget {
                         gradient: const LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xFF8B5CF6),
-                            Color(0xFF7C3AED),
-                          ],
+                          colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
                         ),
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -9282,11 +9477,7 @@ class AboutScreen extends StatelessWidget {
                 color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
-                icon,
-                color: const Color(0xFF8B5CF6),
-                size: 22,
-              ),
+              child: Icon(icon, color: const Color(0xFF8B5CF6), size: 22),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -9373,10 +9564,7 @@ class AboutScreen extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            emoji,
-            style: const TextStyle(fontSize: 18),
-          ),
+          Text(emoji, style: const TextStyle(fontSize: 18)),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -9408,20 +9596,14 @@ class AboutScreen extends StatelessWidget {
         ),
         content: const Text(
           'Email us at:\nsupport@focusapp.com\n\nWe typically respond within 24 hours.',
-          style: TextStyle(
-            color: Color(0xFF8E8E93),
-            fontFamily: 'Inter',
-          ),
+          style: TextStyle(color: Color(0xFF8E8E93), fontFamily: 'Inter'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'Close',
-              style: TextStyle(
-                color: Color(0xFF8E8E93),
-                fontFamily: 'Inter',
-              ),
+              style: TextStyle(color: Color(0xFF8E8E93), fontFamily: 'Inter'),
             ),
           ),
           TextButton(
@@ -9463,20 +9645,14 @@ class AboutScreen extends StatelessWidget {
         ),
         content: const Text(
           'Thank you for helping us improve!\n\nPlease email bug reports to:\nbugs@focusapp.com\n\nInclude:\n• Description of the issue\n• Steps to reproduce\n• Screenshots if possible',
-          style: TextStyle(
-            color: Color(0xFF8E8E93),
-            fontFamily: 'Inter',
-          ),
+          style: TextStyle(color: Color(0xFF8E8E93), fontFamily: 'Inter'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'Close',
-              style: TextStyle(
-                color: Color(0xFF8E8E93),
-                fontFamily: 'Inter',
-              ),
+              style: TextStyle(color: Color(0xFF8E8E93), fontFamily: 'Inter'),
             ),
           ),
           TextButton(
