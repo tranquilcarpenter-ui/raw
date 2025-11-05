@@ -1766,28 +1766,29 @@ class _CommunityScreenState extends State<CommunityScreen> {
     Map<String, UserData> searchResults = {};
     bool isSearching = false;
 
-    await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1C1C1E),
-          title: const Text(
-            'Add Friend',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Search by name or user ID',
-                  style: TextStyle(color: Color(0xFF8E8E93), fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: searchController,
+    try {
+      await showDialog(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            backgroundColor: const Color(0xFF1C1C1E),
+            title: const Text(
+              'Add Friend',
+              style: TextStyle(color: Colors.white),
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Search by name or user ID',
+                    style: TextStyle(color: Color(0xFF8E8E93), fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchController,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     hintText: 'Name or ID...',
@@ -1970,7 +1971,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
           ],
         ),
       ),
-    );
+      );
+    } finally {
+      // Always dispose controller when dialog closes
+      searchController.dispose();
+    }
   }
 
   Widget _buildFilterButton(String text, int index) {
@@ -3136,7 +3141,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
           ),
         ],
       ),
-    );
+    ).then((_) {
+      // Always dispose controllers when dialog closes
+      nameController.dispose();
+      descriptionController.dispose();
+    });
   }
 
   void _showJoinGroupDialog() {
@@ -3274,7 +3283,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
           ),
         ],
       ),
-    );
+    ).then((_) {
+      // Always dispose controller when dialog closes
+      codeController.dispose();
+    });
   }
 
   void _showGroupDetails(Group group) {
