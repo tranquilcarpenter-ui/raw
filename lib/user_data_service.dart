@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart';
 import 'user_data.dart';
 
 /// Service to manage unified user data in Firestore
@@ -114,15 +116,52 @@ class UserDataService {
     });
   }
 
+  /// Compress image file to reduce size and improve performance
+  /// Returns compressed file or original if compression fails
+  Future<File> _compressImage(File file, {int quality = 85, int maxWidth = 1024}) async {
+    try {
+      debugPrint('🗜️ Compressing image: ${file.path}');
+      final tempDir = await getTemporaryDirectory();
+      final targetPath = '${tempDir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      final result = await FlutterImageCompress.compressAndGetFile(
+        file.absolute.path,
+        targetPath,
+        quality: quality,
+        minWidth: maxWidth,
+        minHeight: maxWidth,
+      );
+
+      if (result != null) {
+        final originalSize = await file.length();
+        final compressedSize = await result.length();
+        final reduction = ((originalSize - compressedSize) / originalSize * 100).toStringAsFixed(1);
+        debugPrint('✅ Image compressed: ${originalSize} -> ${compressedSize} bytes ($reduction% reduction)');
+        return File(result.path);
+      } else {
+        debugPrint('⚠️ Compression returned null, using original image');
+        return file;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Image compression failed, using original: $e');
+      return file;
+    }
+  }
+
   /// Upload avatar image file to Firebase Storage and update user document
   /// Returns the download URL on success, or null on failure.
+  /// Images are automatically compressed to max 512px and 85% quality
   Future<String?> uploadAvatarFile(String userId, File file) async {
     try {
       debugPrint('📤 Uploading avatar for user $userId');
+
+      // Compress image before upload (avatars: 512px max, 85% quality)
+      final compressedFile = await _compressImage(file, quality: 85, maxWidth: 512);
+
       final ref = FirebaseStorage.instance.ref().child(
         'users/$userId/avatar.jpg',
       );
-      await ref.putFile(file);
+      await ref.putFile(compressedFile);
       final downloadUrl = await ref.getDownloadURL();
       debugPrint('✅ Avatar uploaded, download URL: $downloadUrl');
 
@@ -140,13 +179,18 @@ class UserDataService {
   }
 
   /// Upload banner image file to Firebase Storage and update user document
+  /// Images are automatically compressed to max 1920px and 85% quality
   Future<String?> uploadBannerFile(String userId, File file) async {
     try {
       debugPrint('📤 Uploading banner image for user $userId');
+
+      // Compress image before upload (banners: 1920px max, 85% quality)
+      final compressedFile = await _compressImage(file, quality: 85, maxWidth: 1920);
+
       final ref = FirebaseStorage.instance.ref().child(
         'users/$userId/banner.jpg',
       );
-      await ref.putFile(file);
+      await ref.putFile(compressedFile);
       final downloadUrl = await ref.getDownloadURL();
       debugPrint('✅ Banner uploaded, download URL: $downloadUrl');
 

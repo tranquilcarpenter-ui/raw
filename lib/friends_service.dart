@@ -241,7 +241,39 @@ class FriendsService {
     }
   }
 
+  /// Batch fetch user data for multiple user IDs
+  /// Uses Firestore whereIn queries (max 10 IDs per query) for efficiency
+  Future<Map<String, UserData>> _batchGetUsers(List<String> userIds) async {
+    if (userIds.isEmpty) return {};
+
+    final results = <String, UserData>{};
+
+    // Firestore 'whereIn' supports up to 10 values per query
+    const batchSize = 10;
+
+    for (var i = 0; i < userIds.length; i += batchSize) {
+      final batchIds = userIds.skip(i).take(batchSize).toList();
+
+      try {
+        final querySnapshot = await _firestore
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: batchIds)
+            .get();
+
+        for (final doc in querySnapshot.docs) {
+          final userData = UserData.fromJson(doc.data());
+          results[doc.id] = userData;
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error batch fetching users: $e');
+      }
+    }
+
+    return results;
+  }
+
   /// Get list of user's accepted friends only
+  /// Performance: Uses batch queries to reduce N+1 query problem
   Future<List<Friend>> getFriends(String userId) async {
     try {
       debugPrint('📥 Loading friends for user: $userId');
@@ -250,32 +282,40 @@ class FriendsService {
           .where('status', isEqualTo: FriendRequestStatus.accepted.name)
           .get();
 
+      if (querySnapshot.docs.isEmpty) {
+        debugPrint('✅ No friends found');
+        return [];
+      }
+
+      // Extract friend data
+      final friendsData = querySnapshot.docs
+          .map((doc) => Friend.fromJson(doc.data() as Map<String, dynamic>))
+          .toList();
+
+      // Batch fetch all user data (reduces queries from N+1 to 1+ceil(N/10))
+      final friendUserIds = friendsData.map((f) => f.userId).toList();
+      final userDataMap = await _batchGetUsers(friendUserIds);
+
+      debugPrint('📊 Fetched user data for ${userDataMap.length}/${friendUserIds.length} friends');
+
+      // Merge friend data with live statistics
       final friends = <Friend>[];
+      for (final friendData in friendsData) {
+        final userData = userDataMap[friendData.userId];
 
-      // Fetch live statistics for each friend
-      for (final doc in querySnapshot.docs) {
-        final friendData = Friend.fromJson(doc.data() as Map<String, dynamic>);
-
-        // Fetch current user data to get latest statistics
-        try {
-          final userData = await getUserById(friendData.userId);
-          if (userData != null) {
-            // Update friend with live statistics (including monthly hours)
-            friends.add(friendData.copyWith(
-              fullName: userData.fullName,
-              avatarUrl: userData.avatarUrl,
-              focusHours: userData.focusHours,
-              focusHoursMonth: userData.focusHoursThisMonth,
-              dayStreak: userData.dayStreak,
-              rankPercentage: userData.rankPercentage,
-            ));
-          } else {
-            // Use cached data if user not found
-            friends.add(friendData);
-          }
-        } catch (e) {
-          debugPrint('⚠️ Error fetching stats for friend ${friendData.userId}: $e');
-          // Use cached data if stats fetch fails
+        if (userData != null) {
+          // Update friend with live statistics (including monthly hours)
+          friends.add(friendData.copyWith(
+            fullName: userData.fullName,
+            avatarUrl: userData.avatarUrl,
+            focusHours: userData.focusHours,
+            focusHoursMonth: userData.focusHoursThisMonth,
+            dayStreak: userData.dayStreak,
+            rankPercentage: userData.rankPercentage,
+          ));
+        } else {
+          // Use cached data if user not found
+          debugPrint('⚠️ Using cached data for friend ${friendData.userId}');
           friends.add(friendData);
         }
       }
@@ -360,6 +400,9 @@ class FriendsService {
 
   /// Update friend's stats (called when user's stats change)
   /// This keeps friend data in sync across all users who have them as a friend
+  ///
+  /// Performance: O(f) where f = number of users who have this user as a friend
+  /// Uses collection group query + batch updates for efficiency
   Future<void> updateFriendStats(
     String userId,
     String fullName,
@@ -371,35 +414,56 @@ class FriendsService {
     try {
       debugPrint('🔄 Updating friend stats for user: $userId');
 
-      // Get all users who have this user as a friend
-      final usersSnapshot = await _firestore.collection('users').get();
+      // Use collection group query to find all friend documents with this userId
+      // This queries across all 'friends' subcollections in a single query
+      // Much more efficient than iterating through all users
+      final friendDocsSnapshot = await _firestore
+          .collectionGroup('friends')
+          .where(FieldPath.documentId, isEqualTo: userId)
+          .get();
 
-      for (final userDoc in usersSnapshot.docs) {
-        final friendDoc = await _firestore
-            .collection('users')
-            .doc(userDoc.id)
-            .collection('friends')
-            .doc(userId)
-            .get();
+      debugPrint('📊 Found ${friendDocsSnapshot.docs.length} friend entries to update');
 
-        if (friendDoc.exists) {
-          // Update this friend's data in their collection
-          await _firestore
-              .collection('users')
-              .doc(userDoc.id)
-              .collection('friends')
-              .doc(userId)
-              .update({
-            'fullName': fullName,
-            'avatarUrl': avatarUrl,
-            'focusHours': focusHours,
-            'dayStreak': dayStreak,
-            'rankPercentage': rankPercentage,
-          });
+      if (friendDocsSnapshot.docs.isEmpty) {
+        debugPrint('✅ No friend entries to update');
+        return;
+      }
+
+      // Batch update for efficiency (Firestore limit: 500 operations per batch)
+      const batchSize = 500;
+      final batches = <WriteBatch>[];
+      var currentBatch = _firestore.batch();
+      var batchCount = 0;
+
+      for (final friendDoc in friendDocsSnapshot.docs) {
+        currentBatch.update(friendDoc.reference, {
+          'fullName': fullName,
+          'avatarUrl': avatarUrl,
+          'focusHours': focusHours,
+          'dayStreak': dayStreak,
+          'rankPercentage': rankPercentage,
+        });
+
+        batchCount++;
+        if (batchCount >= batchSize) {
+          batches.add(currentBatch);
+          currentBatch = _firestore.batch();
+          batchCount = 0;
         }
       }
 
-      debugPrint('✅ Friend stats updated');
+      // Add remaining batch if not empty
+      if (batchCount > 0) {
+        batches.add(currentBatch);
+      }
+
+      // Commit all batches
+      for (var i = 0; i < batches.length; i++) {
+        await batches[i].commit();
+        debugPrint('✅ Committed batch ${i + 1}/${batches.length}');
+      }
+
+      debugPrint('✅ Friend stats updated for ${friendDocsSnapshot.docs.length} entries');
     } catch (e, st) {
       debugPrint('❌ Error updating friend stats: $e');
       debugPrint('$st');

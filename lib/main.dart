@@ -1770,6 +1770,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     final searchController = TextEditingController();
     Map<String, UserData> searchResults = {};
     bool isSearching = false;
+    Timer? searchDebounceTimer;
 
     try {
       await showDialog(
@@ -1809,49 +1810,60 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       borderSide: BorderSide.none,
                     ),
                   ),
-                  onChanged: (query) async {
+                  onChanged: (query) {
+                    // Cancel previous timer
+                    searchDebounceTimer?.cancel();
+
                     if (query.trim().isEmpty) {
                       setDialogState(() {
                         searchResults = {};
+                        isSearching = false;
                       });
                       return;
                     }
 
+                    // Show loading immediately
                     setDialogState(() {
                       isSearching = true;
                     });
 
-                    // Search by name or ID
-                    Map<String, UserData> results;
-                    if (query.trim().length < 20) {
-                      // Search by name
-                      results = await FriendsService.instance.searchUsersByName(
-                        query.trim(),
-                      );
-                    } else {
-                      // Search by ID (if query looks like a user ID)
-                      final userById = await FriendsService.instance
-                          .getUserById(query.trim());
-                      results = userById != null
-                          ? {query.trim(): userById}
-                          : {};
-                    }
+                    // Debounce: Wait 500ms before executing search
+                    searchDebounceTimer = Timer(
+                      const Duration(milliseconds: 500),
+                      () async {
+                        // Search by name or ID
+                        Map<String, UserData> results;
+                        if (query.trim().length < 20) {
+                          // Search by name
+                          results = await FriendsService.instance.searchUsersByName(
+                            query.trim(),
+                          );
+                        } else {
+                          // Search by ID (if query looks like a user ID)
+                          final userById = await FriendsService.instance
+                              .getUserById(query.trim());
+                          results = userById != null
+                              ? {query.trim(): userById}
+                              : {};
+                        }
 
-                    // Filter out the current user from search results
-                    results.remove(user.uid);
+                        // Filter out the current user from search results
+                        results.remove(user.uid);
 
-                    // Also filter out users who are already friends or have pending requests
-                    final existingUserIds = await FriendsService.instance
-                        .getExistingConnectionIds(user.uid);
+                        // Also filter out users who are already friends or have pending requests
+                        final existingUserIds = await FriendsService.instance
+                            .getExistingConnectionIds(user.uid);
 
-                    results.removeWhere(
-                      (userId, _) => existingUserIds.contains(userId),
+                        results.removeWhere(
+                          (userId, _) => existingUserIds.contains(userId),
+                        );
+
+                        setDialogState(() {
+                          searchResults = results;
+                          isSearching = false;
+                        });
+                      },
                     );
-
-                    setDialogState(() {
-                      searchResults = results;
-                      isSearching = false;
-                    });
                   },
                 ),
                 const SizedBox(height: 16),
@@ -1978,7 +1990,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
       ),
       );
     } finally {
-      // Always dispose controller when dialog closes
+      // Always dispose controller and cancel timer when dialog closes
+      searchDebounceTimer?.cancel();
       searchController.dispose();
     }
   }
