@@ -220,6 +220,7 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
               newUserData,
               merge: false,
             );
+            if (!mounted) return;
             setState(() {
               _userData = newUserData;
             });
@@ -227,6 +228,7 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
             debugPrint(
               '📊 Loaded data on retry: ${retryUserData.fullName}, Streak=${retryUserData.dayStreak}',
             );
+            if (!mounted) return;
             setState(() {
               _userData = retryUserData;
               _profileImagePath = retryUserData.avatarUrl;
@@ -237,6 +239,7 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
           debugPrint(
             '📊 Loaded data: ${userData.fullName}, Streak=${userData.dayStreak}, Hours=${userData.focusHours}',
           );
+          if (!mounted) return;
           setState(() {
             _userData = userData;
             // Load profile and banner images from UserData
@@ -249,6 +252,7 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
         // User logged out - reset to default data
         debugPrint('👋 User logged out');
         _currentUserId = null;
+        if (!mounted) return;
         setState(() {
           _userData = UserData.newUser(
             email: 'guest@example.com',
@@ -924,6 +928,7 @@ class _FocusScreenState extends State<FocusScreen>
               userId,
               projectId,
             );
+            if (!mounted) return;
             setState(() {
               _selectedProjectId = projectId;
               _selectedSubprojectId = subprojectId;
