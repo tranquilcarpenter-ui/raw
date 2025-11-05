@@ -6384,9 +6384,10 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     final currentName = userDataProvider.userData.fullName;
     final controller = TextEditingController(text: currentName);
 
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
+    try {
+      final newName = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
         title: const Text(
           'Change Username',
@@ -6437,23 +6438,27 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
           ),
         ],
       ),
-    );
-
-    if (newName != null && newName != currentName && mounted) {
-      // Update the user data with new full name
-      final updatedUserData = userDataProvider.userData.copyWith(
-        fullName: newName,
-        updatedAt: DateTime.now(),
       );
-      userDataProvider.updateUserData(updatedUserData);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Username updated successfully'),
-          backgroundColor: Color(0xFF00C853),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      if (newName != null && newName != currentName && mounted) {
+        // Update the user data with new full name
+        final updatedUserData = userDataProvider.userData.copyWith(
+          fullName: newName,
+          updatedAt: DateTime.now(),
+        );
+        userDataProvider.updateUserData(updatedUserData);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Username updated successfully'),
+            backgroundColor: Color(0xFF00C853),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      // Always dispose controller when dialog closes
+      controller.dispose();
     }
   }
 
@@ -6468,9 +6473,10 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
 
-    final result = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (context) => AlertDialog(
+    try {
+      final result = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
         title: const Text(
           'Update Email Address',
@@ -6657,6 +6663,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
 
         debugPrint('Error updating email: $e');
       }
+      }
+    } finally {
+      // Always dispose controllers when dialog completes
+      emailController.dispose();
+      passwordController.dispose();
     }
   }
 
