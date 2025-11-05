@@ -83,7 +83,13 @@ class FriendsService {
         return null;
       }
 
-      final userData = UserData.fromJson(docSnapshot.data()!);
+      final data = docSnapshot.data();
+      if (data == null) {
+        debugPrint('⚠️ User document exists but has no data: $userId');
+        return null;
+      }
+
+      final userData = UserData.fromJson(data);
       debugPrint('✅ Found user: ${userData.fullName}');
       return userData;
     } catch (e, st) {
