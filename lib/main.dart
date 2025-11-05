@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 // Firebase types are accessed via `FirebaseService` where needed
 import 'firebase_service.dart';
 import 'auth_provider.dart';
@@ -16,6 +17,7 @@ import 'friend.dart';
 import 'friends_service.dart';
 import 'group.dart';
 import 'groups_service.dart';
+import 'project.dart';
 import 'project_service.dart';
 import 'project_selector_popup.dart';
 import 'user_profile_screen.dart';
@@ -30,10 +32,12 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
 
 // Firebase initialization is managed by `FirebaseService` singleton.
 
-// Helper function to build image widget from either local file or network URL
+// Optimized helper function to build image widget from either local file or network URL
 Widget buildImageFromPath(
   String imagePath, {
   BoxFit fit = BoxFit.cover,
@@ -45,16 +49,42 @@ Widget buildImageFromPath(
   final isNetworkImage =
       imagePath.startsWith('http://') || imagePath.startsWith('https://');
 
+  // Helper to safely convert dimension to int, returns null if invalid
+  int? safeDimensionToInt(double? value, double multiplier) {
+    if (value == null) return null;
+    final result = value * multiplier;
+    if (!result.isFinite || result <= 0 || result > 10000) return null;
+    return result.round();
+  }
+
   if (isNetworkImage) {
-    return Image.network(
-      imagePath,
+    return CachedNetworkImage(
+      imageUrl: imagePath,
       fit: fit,
       width: width,
       height: height,
       alignment: alignment,
-      errorBuilder: errorWidget != null
-          ? (context, error, stackTrace) => errorWidget
-          : null,
+      placeholder: (context, url) => Container(
+        width: width,
+        height: height,
+        color: const Color(0xFF2C2C2E),
+        child: const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)),
+            ),
+          ),
+        ),
+      ),
+      errorWidget: (context, url, error) =>
+          errorWidget ?? const Icon(Icons.error),
+      memCacheWidth: safeDimensionToInt(width, 2),
+      memCacheHeight: safeDimensionToInt(height, 2),
+      maxWidthDiskCache: safeDimensionToInt(width, 3),
+      maxHeightDiskCache: safeDimensionToInt(height, 3),
     );
   } else {
     return Image.file(
@@ -63,6 +93,8 @@ Widget buildImageFromPath(
       width: width,
       height: height,
       alignment: alignment,
+      cacheWidth: safeDimensionToInt(width, 2),
+      cacheHeight: safeDimensionToInt(height, 2),
       errorBuilder: errorWidget != null
           ? (context, error, stackTrace) => errorWidget
           : null,
@@ -166,17 +198,40 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
         // Load user data from Firestore
         final userData = await UserDataService.instance.loadUserData(user.uid);
 
-        // If no data exists (shouldn't happen with new flow), create it
+        // If no data exists (shouldn't happen with new flow), wait a bit and retry
         if (userData == null) {
-          debugPrint('⚠️ No data found for user, creating new user data');
-          final newUserData = UserData.newUser(
-            email: user.email ?? 'user@example.com',
-            fullName: user.email?.split('@')[0] ?? 'User',
+          debugPrint('⚠️ No data found for user, retrying...');
+          // Wait for signup process to complete saving data
+          await Future.delayed(const Duration(seconds: 1));
+          final retryUserData = await UserDataService.instance.loadUserData(
+            user.uid,
           );
-          await UserDataService.instance.saveUserData(user.uid, newUserData);
-          setState(() {
-            _userData = newUserData;
-          });
+
+          if (retryUserData == null) {
+            debugPrint('⚠️ Still no data found, creating default user data');
+            final newUserData = UserData.newUser(
+              email: user.email ?? 'user@example.com',
+              fullName:
+                  'User', // Don't use email prefix - let user set their name
+            );
+            await UserDataService.instance.saveUserData(
+              user.uid,
+              newUserData,
+              merge: false,
+            );
+            setState(() {
+              _userData = newUserData;
+            });
+          } else {
+            debugPrint(
+              '📊 Loaded data on retry: ${retryUserData.fullName}, Streak=${retryUserData.dayStreak}',
+            );
+            setState(() {
+              _userData = retryUserData;
+              _profileImagePath = retryUserData.avatarUrl;
+              _bannerImagePath = retryUserData.bannerImageUrl;
+            });
+          }
         } else {
           debugPrint(
             '📊 Loaded data: ${userData.fullName}, Streak=${userData.dayStreak}, Hours=${userData.focusHours}',
@@ -529,7 +584,9 @@ class _MainScreenState extends State<MainScreen>
           onScrollDirectionChanged: _onScrollDirectionChanged,
         );
       case 2:
-        return const SettingsScreen();
+        return SettingsScreen(
+          onScrollDirectionChanged: _onScrollDirectionChanged,
+        );
       default:
         return FocusScreen(onFocusStateChanged: _onFocusStateChanged);
     }
@@ -727,14 +784,14 @@ class _FocusScreenState extends State<FocusScreen>
     _updateFocusingStatus(true);
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        if (_remainingSeconds > 0) {
+      if (_remainingSeconds > 0) {
+        setState(() {
           _remainingSeconds--;
-        } else {
-          _onTimerComplete();
-          _stopTimer();
-        }
-      });
+        });
+      } else {
+        _onTimerComplete();
+        _stopTimer();
+      }
     });
   }
 
@@ -1235,13 +1292,15 @@ class _FocusScreenState extends State<FocusScreen>
                   right: 0,
                   top: screenHeight * 0.135, // 114/844 ≈ 0.135
                   child: Center(
-                    child: SizedBox(
-                      width: 227,
-                      height: 227,
-                      child: CustomPaint(
-                        painter: CircularProgressPainter(
-                          progress: progress,
-                          isRunning: _isRunning,
+                    child: RepaintBoundary(
+                      child: SizedBox(
+                        width: 227,
+                        height: 227,
+                        child: CustomPaint(
+                          painter: CircularProgressPainter(
+                            progress: progress,
+                            isRunning: _isRunning,
+                          ),
                         ),
                       ),
                     ),
@@ -2443,19 +2502,27 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const NotificationCenterScreen(),
+                          builder: (context) =>
+                              const NotificationCenterScreen(),
                         ),
                       );
                     },
                     child: StreamBuilder<int>(
                       stream:
-                          firebase_auth.FirebaseAuth.instance.currentUser?.uid !=
-                                  null
-                              ? NotificationService.instance.streamUnreadCount(
-                                  firebase_auth
-                                      .FirebaseAuth.instance.currentUser!.uid,
-                                )
-                              : Stream.value(0),
+                          firebase_auth
+                                  .FirebaseAuth
+                                  .instance
+                                  .currentUser
+                                  ?.uid !=
+                              null
+                          ? NotificationService.instance.streamUnreadCount(
+                              firebase_auth
+                                  .FirebaseAuth
+                                  .instance
+                                  .currentUser!
+                                  .uid,
+                            )
+                          : Stream.value(0),
                       builder: (context, snapshot) {
                         final unreadCount = snapshot.data ?? 0;
                         return Stack(
@@ -2500,7 +2567,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   ),
                   const SizedBox(width: 16),
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert, color: Colors.white, size: 20),
+                    icon: const Icon(
+                      Icons.more_vert,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                     color: const Color(0xFF1C1C1E),
                     onSelected: (value) {
                       if (value == 'add_friend') {
@@ -2512,7 +2583,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         value: 'add_friend',
                         child: Row(
                           children: [
-                            Icon(Icons.person_add, color: Colors.white, size: 20),
+                            Icon(
+                              Icons.person_add,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                             SizedBox(width: 8),
                             Text(
                               'Add Friends',
@@ -2616,15 +2691,18 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             slivers: [
                               // Friends List
                               SliverList(
-                                delegate: SliverChildBuilderDelegate((
-                                  context,
-                                  index,
-                                ) {
-                                  return _buildFriendRow(
-                                    _friends[index],
-                                    index + 1,
-                                  );
-                                }, childCount: _friends.length),
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, index) {
+                                    final friend = _friends[index];
+                                    return RepaintBoundary(
+                                      key: ValueKey(friend.userId),
+                                      child: _buildFriendRow(friend, index + 1),
+                                    );
+                                  },
+                                  childCount: _friends.length,
+                                  addRepaintBoundaries:
+                                      false, // We manually added them
+                                ),
                               ),
                               // Friend request sections at the bottom
                               SliverToBoxAdapter(
@@ -2739,10 +2817,17 @@ class _CommunityScreenState extends State<CommunityScreen> {
             )
           else
             SliverList(
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final group = _groups[index];
-                return _buildGroupCard(group);
-              }, childCount: _groups.length),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final group = _groups[index];
+                  return RepaintBoundary(
+                    key: ValueKey(group.groupId),
+                    child: _buildGroupCard(group),
+                  );
+                },
+                childCount: _groups.length,
+                addRepaintBoundaries: false, // We manually added them
+              ),
             ),
         ],
       ),
@@ -3790,6 +3875,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<Achievement> _achievements = [];
   bool _isLoadingAchievements = true;
 
+  final ScreenshotController _screenshotController = ScreenshotController();
+
   // Get the number of days based on selected period
   int get _daysInPeriod {
     switch (_selectedPeriod) {
@@ -3880,7 +3967,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // First, check and unlock any achievements based on current stats
       final userDataProvider = UserDataProvider.of(context);
       if (userDataProvider != null) {
-        debugPrint('🏆 UserData available: focusHours=${userDataProvider.userData.focusHours}, dayStreak=${userDataProvider.userData.dayStreak}');
+        debugPrint(
+          '🏆 UserData available: focusHours=${userDataProvider.userData.focusHours}, dayStreak=${userDataProvider.userData.dayStreak}',
+        );
         await AchievementsService.instance.checkAndUnlockAchievements(
           user.uid,
           userDataProvider.userData,
@@ -3890,12 +3979,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       // Then load the updated achievements
-      final achievements =
-          await AchievementsService.instance.getUserAchievements(user.uid);
+      final achievements = await AchievementsService.instance
+          .getUserAchievements(user.uid);
 
       debugPrint('🏆 Loaded ${achievements.length} achievements');
       final unlockedCount = achievements.where((a) => a.isUnlocked).length;
-      debugPrint('🏆 Unlocked achievements: $unlockedCount/${achievements.length}');
+      debugPrint(
+        '🏆 Unlocked achievements: $unlockedCount/${achievements.length}',
+      );
 
       if (mounted) {
         setState(() {
@@ -3909,6 +4000,436 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() {
           _isLoadingAchievements = false;
         });
+      }
+    }
+  }
+
+  // Build the statistics card for sharing
+  Widget _buildShareableStatisticsCard(UserData userData, String? profileImagePath) {
+    return Container(
+      width: 400,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF1C1C1E),
+            Color(0xFF000000),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF8B5CF6),
+          width: 2,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Profile picture and name
+          Row(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFF8B5CF6),
+                    width: 2,
+                  ),
+                ),
+                child: ClipOval(
+                  child: profileImagePath != null
+                      ? buildImageFromPath(
+                          profileImagePath,
+                          fit: BoxFit.cover,
+                          width: 60,
+                          height: 60,
+                        )
+                      : const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      userData.fullName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '@${userData.username}',
+                      style: const TextStyle(
+                        color: Color(0xFF8E8E93),
+                        fontSize: 14,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          // Statistics cards
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2C2C2E),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '${userData.dayStreak}',
+                        style: const TextStyle(
+                          color: Color(0xFFFFD700),
+                          fontSize: 36,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'DAY STREAK',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2C2C2E),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '${userData.focusHours}',
+                        style: const TextStyle(
+                          color: Color(0xFFB794F6),
+                          fontSize: 36,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'FOCUS HOURS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          // Branding
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF8B5CF6),
+                    width: 1,
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.remove_red_eye,
+                      color: Color(0xFF8B5CF6),
+                      size: 16,
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      'Focus App',
+                      style: TextStyle(
+                        color: Color(0xFF8B5CF6),
+                        fontSize: 12,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Show share dialog with screenshot
+  Future<void> _shareStatistics() async {
+    final userDataProvider = UserDataProvider.of(context);
+    final userData = userDataProvider?.userData;
+    if (userData == null) return;
+
+    final profileImageProvider = ProfileImageProvider.of(context);
+    final profileImagePath = profileImageProvider?.profileImagePath;
+
+    try {
+      // Capture the statistics card as image
+      final imageBytes = await _screenshotController.captureFromWidget(
+        _buildShareableStatisticsCard(userData, profileImagePath),
+        pixelRatio: 3.0,
+      );
+
+      if (!mounted) return;
+
+      // Show dialog with preview and share options
+      showDialog(
+        context: context,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 400),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: const Color(0xFF2C2C2E),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Share Statistics',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Image preview
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(
+                      imageBytes,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Action buttons
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            try {
+                              // Save to temporary directory
+                              final tempDir = await getTemporaryDirectory();
+                              final filePath = '${tempDir.path}/focus_stats_${DateTime.now().millisecondsSinceEpoch}.png';
+                              final file = File(filePath);
+                              await file.writeAsBytes(imageBytes);
+
+                              // Share the file
+                              await Share.shareXFiles(
+                                [XFile(filePath)],
+                                text: 'Check out my Focus App statistics!',
+                              );
+
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                              }
+                            } catch (e) {
+                              debugPrint('Error sharing: $e');
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF8B5CF6),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.share,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Share',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontFamily: 'Inter',
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            try {
+                              // Save to temporary directory first (no permissions needed)
+                              final tempDir = await getTemporaryDirectory();
+                              final fileName = 'focus_stats_${DateTime.now().millisecondsSinceEpoch}.png';
+                              final filePath = path.join(tempDir.path, fileName);
+                              final file = File(filePath);
+
+                              debugPrint('💾 Saving to temp: $filePath');
+                              await file.writeAsBytes(imageBytes);
+                              debugPrint('✅ File saved to temp successfully');
+
+                              // Use share functionality to save/export the file
+                              // This lets the user choose where to save without needing permissions
+                              final result = await Share.shareXFiles(
+                                [XFile(filePath)],
+                                text: 'Focus App Statistics',
+                              );
+
+                              debugPrint('📤 Share result: ${result.status}');
+
+                              if (context.mounted) {
+                                if (result.status == ShareResultStatus.success) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Image saved successfully!'),
+                                      backgroundColor: Color(0xFF30D158),
+                                    ),
+                                  );
+                                  Navigator.pop(context);
+                                } else if (result.status == ShareResultStatus.dismissed) {
+                                  // User cancelled, just close the dialog
+                                  Navigator.pop(context);
+                                }
+                              }
+                            } catch (e) {
+                              debugPrint('❌ Error saving: $e');
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to save: ${e.toString()}'),
+                                    backgroundColor: const Color(0xFFFF3B30),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2C2C2E),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.download,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Save',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontFamily: 'Inter',
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error capturing screenshot: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to generate statistics image'),
+            backgroundColor: Color(0xFFFF3B30),
+          ),
+        );
       }
     }
   }
@@ -4280,6 +4801,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                       ),
+                      // Share button on banner (top left, next to back button)
+                      Positioned(
+                        top: 50,
+                        left: 68,
+                        child: GestureDetector(
+                          onTap: _shareStatistics,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF000000,
+                              ).withValues(alpha: 0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.share,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
 
@@ -4370,54 +4913,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             scrollDirection: Axis.horizontal,
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             itemCount: _achievements.length,
+                            addRepaintBoundaries: true,
+                            cacheExtent: 500,
                             itemBuilder: (context, index) {
                               final achievement = _achievements[index];
-                              return GestureDetector(
-                                onTap: () {
-                                  final user = firebase_auth.FirebaseAuth.instance.currentUser;
-                                  if (user != null) {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => AchievementsScreen(userId: user.uid),
-                                      ),
-                                    );
-                                  }
-                                },
-                                child: Container(
-                                  margin: EdgeInsets.only(
-                                    right: index < _achievements.length - 1 ? 8 : 0,
-                                  ),
-                                  width: 50,
-                                  height: 50,
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: achievement.isUnlocked
-                                        ? Image.asset(
-                                            achievement.iconUrl,
-                                            fit: BoxFit.cover,
-                                            errorBuilder:
-                                                (context, error, stackTrace) {
-                                              // Fallback to stone if badge image not found
-                                              return Image.asset(
-                                                'assets/images/achievements/stone.png',
-                                                fit: BoxFit.cover,
-                                              );
-                                            },
-                                          )
-                                        : ColorFiltered(
-                                            colorFilter: const ColorFilter.mode(
-                                              Colors.black45,
-                                              BlendMode.darken,
-                                            ),
-                                            child: Opacity(
-                                              opacity: 0.4,
-                                              child: Image.asset(
-                                                'assets/images/achievements/stone.png',
-                                                fit: BoxFit.cover,
+                              return RepaintBoundary(
+                                key: ValueKey(achievement.id),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    final user = firebase_auth
+                                        .FirebaseAuth
+                                        .instance
+                                        .currentUser;
+                                    if (user != null) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              AchievementsScreen(
+                                                userId: user.uid,
+                                              ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child: Container(
+                                    margin: EdgeInsets.only(
+                                      right: index < _achievements.length - 1
+                                          ? 8
+                                          : 0,
+                                    ),
+                                    width: 50,
+                                    height: 50,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: achievement.isUnlocked
+                                          ? Image.asset(
+                                              achievement.iconUrl,
+                                              fit: BoxFit.cover,
+                                              errorBuilder:
+                                                  (context, error, stackTrace) {
+                                                    // Fallback to stone if badge image not found
+                                                    return Image.asset(
+                                                      'assets/images/achievements/stone.png',
+                                                      fit: BoxFit.cover,
+                                                    );
+                                                  },
+                                            )
+                                          : ColorFiltered(
+                                              colorFilter:
+                                                  const ColorFilter.mode(
+                                                    Colors.black45,
+                                                    BlendMode.darken,
+                                                  ),
+                                              child: Opacity(
+                                                opacity: 0.4,
+                                                child: Image.asset(
+                                                  'assets/images/achievements/stone.png',
+                                                  fit: BoxFit.cover,
+                                                ),
                                               ),
                                             ),
-                                          ),
+                                    ),
                                   ),
                                 ),
                               );
@@ -4563,6 +5120,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         // Activity Graph
                         _buildActivityGraph(userData),
+
+                        const SizedBox(height: 24),
+
+                        // Project Distribution Pie Chart
+                        _buildProjectDistributionGraph(userData),
 
                         const SizedBox(height: 24),
 
@@ -5088,14 +5650,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTapDown: (details) {
               _onTimeGraphTapped(details, sortedData);
             },
-            child: SizedBox(
-              height: 150,
-              child: CustomPaint(
-                size: const Size(double.infinity, 150),
-                painter: LineChartPainter(
-                  data: sortedData,
-                  maxValue: yAxisMax,
-                  selectedHourIndex: _selectedHourIndex,
+            child: RepaintBoundary(
+              child: SizedBox(
+                height: 150,
+                child: CustomPaint(
+                  size: const Size(double.infinity, 150),
+                  painter: LineChartPainter(
+                    data: sortedData,
+                    maxValue: yAxisMax,
+                    selectedHourIndex: _selectedHourIndex,
+                  ),
                 ),
               ),
             ),
@@ -5128,6 +5692,243 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       });
     }
+  }
+
+  Widget _buildProjectDistributionGraph(UserData userData) {
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const SizedBox.shrink();
+    }
+
+    return FutureBuilder<Map<String, String>>(
+      future: _loadProjectNames(user.uid),
+      builder: (context, snapshot) {
+        final projectNames = snapshot.data ?? {};
+        return _buildProjectDistributionContent(userData, projectNames);
+      },
+    );
+  }
+
+  Future<Map<String, String>> _loadProjectNames(String userId) async {
+    try {
+      final projects = await ProjectService.instance.loadAllProjects(userId);
+      final Map<String, String> projectNames = {};
+      for (final project in projects) {
+        projectNames[project.id] = project.name;
+      }
+      return projectNames;
+    } catch (e) {
+      debugPrint('Error loading project names: $e');
+      return {};
+    }
+  }
+
+  String _getProjectDisplayName(
+    String projectId,
+    Map<String, String> projectNames,
+  ) {
+    // First check if we have the actual project name
+    if (projectNames.containsKey(projectId)) {
+      return projectNames[projectId]!;
+    }
+
+    // Handle "unset" special case
+    if (projectId == 'unset') {
+      return 'Unset';
+    }
+
+    // Format generated project IDs like "project_1" to "Project 1"
+    final match = RegExp(r'^project_(\d+)$').firstMatch(projectId);
+    if (match != null) {
+      return 'Project ${match.group(1)}';
+    }
+
+    // Format generated subproject IDs like "project_1_sub_0" to "Project 1 - Subtask 1"
+    final subMatch = RegExp(r'^project_(\d+)_sub_(\d+)$').firstMatch(projectId);
+    if (subMatch != null) {
+      final projectNum = int.parse(subMatch.group(1)!);
+      final subNum =
+          int.parse(subMatch.group(2)!) + 1; // Add 1 for 1-based indexing
+      return 'Project $projectNum - Subtask $subNum';
+    }
+
+    // Default: return the ID as-is
+    return projectId;
+  }
+
+  Widget _buildProjectDistributionContent(
+    UserData userData,
+    Map<String, String> projectNames,
+  ) {
+    // Calculate total minutes per project from all focus sessions
+    final Map<String, double> projectMinutes = {};
+
+    for (final session in userData.focusSessions) {
+      final projectId = session.projectId;
+      final minutes = session.duration.inMinutes.toDouble();
+      projectMinutes[projectId] = (projectMinutes[projectId] ?? 0.0) + minutes;
+    }
+
+    // Convert to hours and sort by value
+    final projectHours = projectMinutes.map(
+      (key, value) => MapEntry(key, value / 60.0),
+    );
+
+    // Sort by hours (descending)
+    final sortedEntries = projectHours.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    // If no data, show empty state
+    if (sortedEntries.isEmpty || sortedEntries.every((e) => e.value == 0)) {
+      return AppCard(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Project Distribution',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'No focus sessions recorded yet',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 12,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            const SizedBox(height: 40),
+            const Center(
+              child: Icon(
+                Icons.pie_chart_outline,
+                color: Color(0xFF8E8E93),
+                size: 64,
+              ),
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
+      );
+    }
+
+    // Calculate total hours
+    final totalHours = sortedEntries.fold(
+      0.0,
+      (total, entry) => total + entry.value,
+    );
+
+    // Predefined colors for projects (matching the app's color scheme)
+    final List<Color> projectColors = [
+      const Color(0xFF8B5CF6), // Purple
+      const Color(0xFF06B6D4), // Cyan
+      const Color(0xFFFF9500), // Orange
+      const Color(0xFF34C759), // Green
+      const Color(0xFFFF3B30), // Red
+      const Color(0xFFFFCC00), // Yellow
+      const Color(0xFFFF2D55), // Pink
+      const Color(0xFF5856D6), // Indigo
+    ];
+
+    // Build data for pie chart
+    final List<PieChartData> chartData = [];
+    for (int i = 0; i < sortedEntries.length; i++) {
+      final entry = sortedEntries[i];
+      final percentage = (entry.value / totalHours) * 100;
+      chartData.add(
+        PieChartData(
+          projectId: entry.key,
+          hours: entry.value,
+          percentage: percentage,
+          color: projectColors[i % projectColors.length],
+        ),
+      );
+    }
+
+    return AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Project Distribution',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Total: ${totalHours.toStringAsFixed(1)} hours',
+            style: const TextStyle(
+              color: Color(0xFF8E8E93),
+              fontSize: 12,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Pie chart
+          RepaintBoundary(
+            child: SizedBox(
+              height: 200,
+              child: CustomPaint(
+                size: const Size(double.infinity, 200),
+                painter: PieChartPainter(data: chartData),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Legend
+          ...chartData.map((item) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: item.color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _getProjectDisplayName(item.projectId, projectNames),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${item.hours.toStringAsFixed(1)}h (${item.percentage.toStringAsFixed(1)}%)',
+                    style: const TextStyle(
+                      color: Color(0xFF8E8E93),
+                      fontSize: 12,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
   }
 
   Widget _buildPeriodButton(String text, int index) {
@@ -5377,6 +6178,83 @@ class LineChartPainter extends CustomPainter {
     return oldDelegate.data != data ||
         oldDelegate.maxValue != maxValue ||
         oldDelegate.selectedHourIndex != selectedHourIndex;
+  }
+}
+
+// Pie Chart Data Model
+class PieChartData {
+  final String projectId;
+  final double hours;
+  final double percentage;
+  final Color color;
+
+  PieChartData({
+    required this.projectId,
+    required this.hours,
+    required this.percentage,
+    required this.color,
+  });
+}
+
+// Custom painter for pie chart
+class PieChartPainter extends CustomPainter {
+  final List<PieChartData> data;
+
+  PieChartPainter({required this.data});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (data.isEmpty) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.height / 2 * 0.8; // 80% of half height
+
+    double startAngle = -math.pi / 2; // Start from top
+
+    for (final segment in data) {
+      final sweepAngle = (segment.percentage / 100) * 2 * math.pi;
+
+      // Draw pie segment
+      final paint = Paint()
+        ..color = segment.color
+        ..style = PaintingStyle.fill;
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        sweepAngle,
+        true,
+        paint,
+      );
+
+      // Draw border between segments
+      final borderPaint = Paint()
+        ..color = const Color(0xFF000000)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        sweepAngle,
+        true,
+        borderPaint,
+      );
+
+      startAngle += sweepAngle;
+    }
+
+    // Draw center circle for donut effect
+    final centerPaint = Paint()
+      ..color = const Color(0xFF1C1C1E)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(center, radius * 0.5, centerPaint);
+  }
+
+  @override
+  bool shouldRepaint(PieChartPainter oldDelegate) {
+    return oldDelegate.data != data;
   }
 }
 
@@ -6138,6 +7016,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         ),
       ),
       body: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         child: AppSafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -6523,8 +7402,13 @@ class NotificationCenterScreen extends StatelessWidget {
 
 class SettingsScreen extends StatefulWidget {
   final bool showBackButton;
+  final Function(bool)? onScrollDirectionChanged;
 
-  const SettingsScreen({super.key, this.showBackButton = false});
+  const SettingsScreen({
+    super.key,
+    this.showBackButton = false,
+    this.onScrollDirectionChanged,
+  });
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -6532,6 +7416,130 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isGenerating = false;
+  final ScrollController _scrollController = ScrollController();
+  double _lastScrollOffset = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (widget.onScrollDirectionChanged == null) return;
+
+    final currentOffset = _scrollController.offset;
+    final delta = currentOffset - _lastScrollOffset;
+
+    if (delta.abs() > 5) {
+      // Threshold to prevent jitter
+      widget.onScrollDirectionChanged!(delta > 0); // true if scrolling down
+      _lastScrollOffset = currentOffset;
+    }
+  }
+
+  UserData _generateRandomDataWithProjects(
+    UserData currentUserData,
+    List<String> projectIds,
+    List<Project> allProjects,
+  ) {
+    final random = math.Random();
+    final now = DateTime.now();
+
+    // Generate random statistics
+    final dayStreak = random.nextInt(365) + 1;
+    final focusHours = random.nextInt(1950) + 50;
+    final rankPercent = random.nextInt(99) + 1;
+    final rankPercentage = 'Top $rankPercent%';
+
+    // Generate activity data
+    final Map<DateTime, double> activityData = {};
+    for (int i = 0; i < 365; i++) {
+      final date = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: i));
+      activityData[date] = random.nextDouble() * 8;
+    }
+
+    // Build map of project IDs to their subprojects
+    final Map<String, List<String>> subprojectsByProject = {};
+    for (final project in allProjects) {
+      if (project.subprojects.isNotEmpty) {
+        subprojectsByProject[project.id] = project.subprojects
+            .map((s) => s.id)
+            .toList();
+      }
+    }
+
+    // Generate focus sessions with real project IDs
+    final List<FocusSession> sessions = [];
+    for (int day = 0; day < 60; day++) {
+      final date = now.subtract(Duration(days: day));
+      final sessionsPerDay = 1 + random.nextInt(6);
+
+      for (int s = 0; s < sessionsPerDay; s++) {
+        final hour = 6 + random.nextInt(17);
+        final minute = random.nextInt(60);
+        final sessionStart = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          hour,
+          minute,
+        );
+        final durationMinutes = 10 + random.nextInt(111);
+
+        // Randomly assign a project from actual projects
+        final projectId = projectIds[random.nextInt(projectIds.length)];
+
+        // If project has subprojects, maybe assign one (50% chance)
+        String? subprojectId;
+        if (subprojectsByProject.containsKey(projectId) && random.nextBool()) {
+          final subprojects = subprojectsByProject[projectId]!;
+          subprojectId = subprojects[random.nextInt(subprojects.length)];
+        }
+
+        sessions.add(
+          FocusSession(
+            start: sessionStart,
+            duration: Duration(minutes: durationMinutes),
+            projectId: projectId,
+            subprojectId: subprojectId,
+          ),
+        );
+      }
+    }
+
+    // Calculate time of day performance
+    final timePerformance = UserData.calculateTimeOfDayPerformance(sessions);
+
+    // Return copy with only statistics replaced, keeping all profile data
+    return currentUserData.copyWith(
+      dayStreak: dayStreak,
+      focusHours: focusHours,
+      rankPercentage: rankPercentage,
+      currentBadge: 'Radiant',
+      currentBadgeProgress: '${dayStreak % 30}/30 days',
+      nextBadge: 'Dutiful',
+      nextBadgeProgress: '$focusHours/500 days',
+      dailyActivityData: activityData,
+      focusSessions: sessions,
+      timeOfDayPerformance: timePerformance,
+      isGeneratedData: true,
+      generatedAt: now,
+      updatedAt: now,
+      currentlyFocusing: false,
+    );
+  }
 
   Future<void> _generateRandomData() async {
     final statisticsProvider = UserDataProvider.of(context);
@@ -6553,6 +7561,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     try {
+      // First, delete all existing projects (except "unset")
+      debugPrint('🗑️ Clearing existing projects...');
+      final existingProjects = await ProjectService.instance.loadAllProjects(
+        user.uid,
+      );
+      for (final project in existingProjects) {
+        if (project.id != 'unset') {
+          try {
+            await ProjectService.instance.deleteProject(user.uid, project.id);
+          } catch (e) {
+            debugPrint('⚠️ Failed to delete project ${project.id}: $e');
+          }
+        }
+      }
+      debugPrint(
+        '✅ Cleared ${existingProjects.where((p) => p.id != "unset").length} projects',
+      );
+
       // Generate random project names, colors, and emojis
       final projectNames = [
         'Work',
@@ -6611,12 +7637,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       }
 
+      // Load all projects to get the real project IDs
+      final allProjects = await ProjectService.instance.loadAllProjects(
+        user.uid,
+      );
+      final projectIds = allProjects.map((p) => p.id).toList();
+
+      // Include 'unset' as well
+      if (!projectIds.contains('unset')) {
+        projectIds.insert(0, 'unset');
+      }
+
       // Simulate data generation with delay
       await Future.delayed(const Duration(seconds: 1));
 
-      // Generate random statistics while preserving profile data
+      // Generate random statistics using actual project IDs
       final currentUserData = statisticsProvider.userData;
-      final newUserData = currentUserData.withRandomStatistics();
+      final newUserData = _generateRandomDataWithProjects(
+        currentUserData,
+        projectIds,
+        allProjects,
+      );
 
       // Update the global state
       statisticsProvider.updateUserData(newUserData);
@@ -6749,7 +7790,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
       body: SingleChildScrollView(
-        child: AppSafeArea(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -6787,7 +7831,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'Notifications',
                 subtitle: 'Configure notification preferences',
                 icon: Icons.notifications_outlined,
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const NotificationsSettingsScreen(),
+                    ),
+                  );
+                },
               ),
 
               // Privacy
@@ -6795,7 +7846,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'Privacy',
                 subtitle: 'Privacy and data settings',
                 icon: Icons.lock_outline,
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PrivacyScreen(),
+                    ),
+                  );
+                },
               ),
 
               // About
@@ -6803,7 +7861,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'About',
                 subtitle: 'Version info and licenses',
                 icon: Icons.info_outline,
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AboutScreen(),
+                    ),
+                  );
+                },
               ),
 
               const SizedBox(height: 24),
@@ -7026,5 +8091,1415 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } else {
       return '${difference.inDays}d ago';
     }
+  }
+}
+
+// Privacy Settings Screen
+class PrivacyScreen extends StatefulWidget {
+  const PrivacyScreen({super.key});
+
+  @override
+  State<PrivacyScreen> createState() => _PrivacyScreenState();
+}
+
+class _PrivacyScreenState extends State<PrivacyScreen> {
+  // Privacy settings state
+  bool _profileVisibility = true;
+  bool _showOnlineStatus = true;
+  bool _allowFriendRequests = true;
+  bool _showFocusActivity = true;
+  bool _showStatistics = true;
+  bool _allowGroupInvites = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF000000),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF000000),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Privacy',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: AppSafeArea(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Profile Privacy Section
+              const Text(
+                'Profile Privacy',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              _buildToggleItem(
+                title: 'Public Profile',
+                subtitle: 'Allow others to view your profile',
+                value: _profileVisibility,
+                onChanged: (value) {
+                  setState(() {
+                    _profileVisibility = value;
+                  });
+                },
+                icon: Icons.public,
+              ),
+
+              _buildToggleItem(
+                title: 'Show Online Status',
+                subtitle: 'Display when you\'re currently focusing',
+                value: _showOnlineStatus,
+                onChanged: (value) {
+                  setState(() {
+                    _showOnlineStatus = value;
+                  });
+                },
+                icon: Icons.circle,
+              ),
+
+              _buildToggleItem(
+                title: 'Show Statistics',
+                subtitle: 'Display focus hours and streaks on profile',
+                value: _showStatistics,
+                onChanged: (value) {
+                  setState(() {
+                    _showStatistics = value;
+                  });
+                },
+                icon: Icons.bar_chart,
+              ),
+
+              _buildToggleItem(
+                title: 'Show Focus Activity',
+                subtitle: 'Display your current project when focusing',
+                value: _showFocusActivity,
+                onChanged: (value) {
+                  setState(() {
+                    _showFocusActivity = value;
+                  });
+                },
+                icon: Icons.remove_red_eye,
+              ),
+
+              const SizedBox(height: 24),
+
+              // Social Privacy Section
+              const Text(
+                'Social Privacy',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              _buildToggleItem(
+                title: 'Allow Friend Requests',
+                subtitle: 'Let others send you friend requests',
+                value: _allowFriendRequests,
+                onChanged: (value) {
+                  setState(() {
+                    _allowFriendRequests = value;
+                  });
+                },
+                icon: Icons.person_add_outlined,
+              ),
+
+              _buildToggleItem(
+                title: 'Allow Group Invites',
+                subtitle: 'Let friends invite you to groups',
+                value: _allowGroupInvites,
+                onChanged: (value) {
+                  setState(() {
+                    _allowGroupInvites = value;
+                  });
+                },
+                icon: Icons.group_outlined,
+              ),
+
+              const SizedBox(height: 24),
+
+              // Data & Permissions Section
+              const Text(
+                'Data & Permissions',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              _buildActionItem(
+                title: 'Storage Permission',
+                subtitle: 'Manage app storage access',
+                icon: Icons.storage_outlined,
+                onTap: () {
+                  // Open app settings
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Open device settings to manage permissions'),
+                      backgroundColor: Color(0xFF8B5CF6),
+                    ),
+                  );
+                },
+              ),
+
+              _buildActionItem(
+                title: 'Notifications Permission',
+                subtitle: 'Manage notification access',
+                icon: Icons.notifications_outlined,
+                onTap: () {
+                  // Open notification settings
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Open device settings to manage permissions'),
+                      backgroundColor: Color(0xFF8B5CF6),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 24),
+
+              // Account Actions Section
+              const Text(
+                'Account Actions',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              _buildActionItem(
+                title: 'Download My Data',
+                subtitle: 'Export all your account data',
+                icon: Icons.download_outlined,
+                onTap: () {
+                  _showDownloadDataDialog();
+                },
+              ),
+
+              _buildActionItem(
+                title: 'Delete Account',
+                subtitle: 'Permanently delete your account',
+                icon: Icons.delete_outline,
+                iconColor: const Color(0xFFFF3B30),
+                onTap: () {
+                  _showDeleteAccountDialog();
+                },
+              ),
+
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToggleItem({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required IconData icon,
+  }) {
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              color: const Color(0xFF8B5CF6),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFF8E8E93),
+                    fontSize: 13,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: const Color(0xFF8B5CF6),
+            activeTrackColor: const Color(0xFF8B5CF6).withValues(alpha: 0.5),
+            inactiveThumbColor: const Color(0xFF8E8E93),
+            inactiveTrackColor: const Color(0xFF3A3A3C),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionItem({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+    Color? iconColor,
+  }) {
+    final color = iconColor ?? const Color(0xFF8B5CF6);
+    return GestureDetector(
+      onTap: onTap,
+      child: AppCard(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: color,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Color(0xFF8E8E93),
+                      fontSize: 13,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: const Color(0xFF8E8E93), size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDownloadDataDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text(
+          'Download Your Data',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: const Text(
+          'We\'ll prepare a file with all your account data and send it to your email. This may take a few minutes.',
+          style: TextStyle(
+            color: Color(0xFF8E8E93),
+            fontFamily: 'Inter',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontFamily: 'Inter',
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Data export started. Check your email soon.'),
+                  backgroundColor: Color(0xFF30D158),
+                ),
+              );
+            },
+            child: const Text(
+              'Download',
+              style: TextStyle(
+                color: Color(0xFF8B5CF6),
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteAccountDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text(
+          'Delete Account?',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: const Text(
+          'This action cannot be undone. All your data, including focus sessions, achievements, and friends will be permanently deleted.',
+          style: TextStyle(
+            color: Color(0xFF8E8E93),
+            fontFamily: 'Inter',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontFamily: 'Inter',
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Account deletion not implemented yet'),
+                  backgroundColor: Color(0xFFFF3B30),
+                ),
+              );
+            },
+            child: const Text(
+              'Delete',
+              style: TextStyle(
+                color: Color(0xFFFF3B30),
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Notifications Settings Screen
+class NotificationsSettingsScreen extends StatefulWidget {
+  const NotificationsSettingsScreen({super.key});
+
+  @override
+  State<NotificationsSettingsScreen> createState() => _NotificationsSettingsScreenState();
+}
+
+class _NotificationsSettingsScreenState extends State<NotificationsSettingsScreen> {
+  // Notification settings state
+  bool _notificationsEnabled = true;
+  bool _friendRequestNotifications = true;
+  bool _groupInviteNotifications = true;
+  bool _achievementNotifications = true;
+  bool _streakReminderNotifications = true;
+  bool _focusStartNotifications = false;
+  bool _focusEndNotifications = true;
+  bool _dailySummaryNotifications = true;
+  bool _soundEnabled = true;
+  bool _vibrationEnabled = true;
+  bool _badgeEnabled = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF000000),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF000000),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Notifications',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: AppSafeArea(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Master Toggle
+              _buildToggleItem(
+                title: 'Enable Notifications',
+                subtitle: 'Receive all app notifications',
+                value: _notificationsEnabled,
+                onChanged: (value) {
+                  setState(() {
+                    _notificationsEnabled = value;
+                  });
+                },
+                icon: Icons.notifications_active,
+                isMain: true,
+              ),
+
+              const SizedBox(height: 24),
+
+              // Social Notifications Section
+              const Text(
+                'Social Notifications',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              _buildToggleItem(
+                title: 'Friend Requests',
+                subtitle: 'When someone sends you a friend request',
+                value: _friendRequestNotifications,
+                onChanged: _notificationsEnabled ? (value) {
+                  setState(() {
+                    _friendRequestNotifications = value;
+                  });
+                } : null,
+                icon: Icons.person_add_outlined,
+              ),
+
+              _buildToggleItem(
+                title: 'Group Invites',
+                subtitle: 'When you\'re invited to a group',
+                value: _groupInviteNotifications,
+                onChanged: _notificationsEnabled ? (value) {
+                  setState(() {
+                    _groupInviteNotifications = value;
+                  });
+                } : null,
+                icon: Icons.group_outlined,
+              ),
+
+              const SizedBox(height: 24),
+
+              // Activity Notifications Section
+              const Text(
+                'Activity Notifications',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              _buildToggleItem(
+                title: 'Focus Started',
+                subtitle: 'When you start a focus session',
+                value: _focusStartNotifications,
+                onChanged: _notificationsEnabled ? (value) {
+                  setState(() {
+                    _focusStartNotifications = value;
+                  });
+                } : null,
+                icon: Icons.play_circle_outline,
+              ),
+
+              _buildToggleItem(
+                title: 'Focus Completed',
+                subtitle: 'When you complete a focus session',
+                value: _focusEndNotifications,
+                onChanged: _notificationsEnabled ? (value) {
+                  setState(() {
+                    _focusEndNotifications = value;
+                  });
+                } : null,
+                icon: Icons.check_circle_outline,
+              ),
+
+              _buildToggleItem(
+                title: 'Achievements Unlocked',
+                subtitle: 'When you unlock a new achievement',
+                value: _achievementNotifications,
+                onChanged: _notificationsEnabled ? (value) {
+                  setState(() {
+                    _achievementNotifications = value;
+                  });
+                } : null,
+                icon: Icons.emoji_events_outlined,
+              ),
+
+              _buildToggleItem(
+                title: 'Streak Reminders',
+                subtitle: 'Daily reminder to maintain your streak',
+                value: _streakReminderNotifications,
+                onChanged: _notificationsEnabled ? (value) {
+                  setState(() {
+                    _streakReminderNotifications = value;
+                  });
+                } : null,
+                icon: Icons.local_fire_department_outlined,
+              ),
+
+              _buildToggleItem(
+                title: 'Daily Summary',
+                subtitle: 'End of day focus summary',
+                value: _dailySummaryNotifications,
+                onChanged: _notificationsEnabled ? (value) {
+                  setState(() {
+                    _dailySummaryNotifications = value;
+                  });
+                } : null,
+                icon: Icons.summarize_outlined,
+              ),
+
+              const SizedBox(height: 24),
+
+              // Notification Behavior Section
+              const Text(
+                'Notification Behavior',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              _buildToggleItem(
+                title: 'Sound',
+                subtitle: 'Play sound for notifications',
+                value: _soundEnabled,
+                onChanged: _notificationsEnabled ? (value) {
+                  setState(() {
+                    _soundEnabled = value;
+                  });
+                } : null,
+                icon: Icons.volume_up_outlined,
+              ),
+
+              _buildToggleItem(
+                title: 'Vibration',
+                subtitle: 'Vibrate for notifications',
+                value: _vibrationEnabled,
+                onChanged: _notificationsEnabled ? (value) {
+                  setState(() {
+                    _vibrationEnabled = value;
+                  });
+                } : null,
+                icon: Icons.vibration_outlined,
+              ),
+
+              _buildToggleItem(
+                title: 'Badge',
+                subtitle: 'Show notification badges on app icon',
+                value: _badgeEnabled,
+                onChanged: _notificationsEnabled ? (value) {
+                  setState(() {
+                    _badgeEnabled = value;
+                  });
+                } : null,
+                icon: Icons.lens_outlined,
+              ),
+
+              const SizedBox(height: 24),
+
+              // Quiet Hours Section
+              const Text(
+                'Quiet Hours',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              _buildActionItem(
+                title: 'Schedule Quiet Hours',
+                subtitle: 'Set times to mute notifications',
+                icon: Icons.nightlight_outlined,
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Quiet hours coming soon!'),
+                      backgroundColor: Color(0xFF8B5CF6),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToggleItem({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool>? onChanged,
+    required IconData icon,
+    bool isMain = false,
+  }) {
+    final isDisabled = onChanged == null;
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: isMain
+                ? const Color(0xFF8B5CF6).withValues(alpha: 0.3)
+                : const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              color: isDisabled
+                ? const Color(0xFF8B5CF6).withValues(alpha: 0.5)
+                : const Color(0xFF8B5CF6),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: isDisabled
+                      ? Colors.white.withValues(alpha: 0.5)
+                      : Colors.white,
+                    fontSize: 16,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: isDisabled
+                      ? const Color(0xFF8E8E93).withValues(alpha: 0.5)
+                      : const Color(0xFF8E8E93),
+                    fontSize: 13,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: const Color(0xFF8B5CF6),
+            activeTrackColor: const Color(0xFF8B5CF6).withValues(alpha: 0.5),
+            inactiveThumbColor: const Color(0xFF8E8E93),
+            inactiveTrackColor: const Color(0xFF3A3A3C),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionItem({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AppCard(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: const Color(0xFF8B5CF6),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Color(0xFF8E8E93),
+                      fontSize: 13,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Color(0xFF8E8E93), size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// About Screen
+class AboutScreen extends StatelessWidget {
+  const AboutScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF000000),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF000000),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'About',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: AppSafeArea(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 24),
+
+              // App Icon
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF8B5CF6),
+                      Color(0xFF7C3AED),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.remove_red_eye,
+                  color: Colors.white,
+                  size: 50,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // App Name
+              const Text(
+                'Focus App',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Version Info
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF8B5CF6),
+                    width: 1,
+                  ),
+                ),
+                child: const Text(
+                  'Version 1.0.0 (Build 1)',
+                  style: TextStyle(
+                    color: Color(0xFF8B5CF6),
+                    fontSize: 13,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Tagline
+              const Text(
+                'Stay focused, achieve more',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 15,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w400,
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 40),
+
+              // App Information Section
+              _buildSectionTitle('App Information'),
+              const SizedBox(height: 12),
+
+              _buildInfoItem(
+                title: 'What\'s New',
+                subtitle: 'See the latest features and updates',
+                icon: Icons.new_releases_outlined,
+                onTap: () {
+                  // Show changelog dialog
+                  _showChangelogDialog(context);
+                },
+              ),
+
+              _buildInfoItem(
+                title: 'Rate Us',
+                subtitle: 'Share your feedback on the App Store',
+                icon: Icons.star_outline,
+                onTap: () {
+                  // Open app store
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Opening App Store...'),
+                      backgroundColor: Color(0xFF8B5CF6),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 24),
+
+              // Legal Section
+              _buildSectionTitle('Legal'),
+              const SizedBox(height: 12),
+
+              _buildInfoItem(
+                title: 'Terms of Service',
+                subtitle: 'Read our terms and conditions',
+                icon: Icons.description_outlined,
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Opening Terms of Service...'),
+                      backgroundColor: Color(0xFF8B5CF6),
+                    ),
+                  );
+                },
+              ),
+
+              _buildInfoItem(
+                title: 'Privacy Policy',
+                subtitle: 'How we handle your data',
+                icon: Icons.privacy_tip_outlined,
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Opening Privacy Policy...'),
+                      backgroundColor: Color(0xFF8B5CF6),
+                    ),
+                  );
+                },
+              ),
+
+              _buildInfoItem(
+                title: 'Open Source Licenses',
+                subtitle: 'View third-party licenses',
+                icon: Icons.code_outlined,
+                onTap: () {
+                  showLicensePage(
+                    context: context,
+                    applicationName: 'Focus App',
+                    applicationVersion: '1.0.0',
+                    applicationIcon: Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF8B5CF6),
+                            Color(0xFF7C3AED),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.remove_red_eye,
+                        color: Colors.white,
+                        size: 30,
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 24),
+
+              // Support Section
+              _buildSectionTitle('Support'),
+              const SizedBox(height: 12),
+
+              _buildInfoItem(
+                title: 'Help Center',
+                subtitle: 'Get help and support',
+                icon: Icons.help_outline,
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Opening Help Center...'),
+                      backgroundColor: Color(0xFF8B5CF6),
+                    ),
+                  );
+                },
+              ),
+
+              _buildInfoItem(
+                title: 'Contact Us',
+                subtitle: 'Send us your feedback',
+                icon: Icons.email_outlined,
+                onTap: () {
+                  _showContactDialog(context);
+                },
+              ),
+
+              _buildInfoItem(
+                title: 'Report a Bug',
+                subtitle: 'Help us improve the app',
+                icon: Icons.bug_report_outlined,
+                onTap: () {
+                  _showBugReportDialog(context);
+                },
+              ),
+
+              const SizedBox(height: 40),
+
+              // Footer
+              const Text(
+                'Made with 💜 for focused individuals',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w400,
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 8),
+
+              const Text(
+                '© 2025 Focus App. All rights reserved.',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontSize: 12,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w400,
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static Widget _buildSectionTitle(String title) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: Color(0xFF8E8E93),
+          fontSize: 13,
+          fontFamily: 'Inter',
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  static Widget _buildInfoItem({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AppCard(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: const Color(0xFF8B5CF6),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Color(0xFF8E8E93),
+                      fontSize: 13,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Color(0xFF8E8E93), size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static void _showChangelogDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text(
+          'What\'s New in 1.0.0',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildChangelogItem('🎉', 'Initial release of Focus App'),
+              _buildChangelogItem('⏱️', 'Focus timer with project tracking'),
+              _buildChangelogItem('📊', 'Statistics and analytics dashboard'),
+              _buildChangelogItem('👥', 'Friends and groups functionality'),
+              _buildChangelogItem('🏆', 'Achievements and streak system'),
+              _buildChangelogItem('🔔', 'Smart notifications'),
+              _buildChangelogItem('📱', 'Beautiful, intuitive interface'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Close',
+              style: TextStyle(
+                color: Color(0xFF8B5CF6),
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _buildChangelogItem(String emoji, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            emoji,
+            style: const TextStyle(fontSize: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 14,
+                fontFamily: 'Inter',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static void _showContactDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text(
+          'Contact Us',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: const Text(
+          'Email us at:\nsupport@focusapp.com\n\nWe typically respond within 24 hours.',
+          style: TextStyle(
+            color: Color(0xFF8E8E93),
+            fontFamily: 'Inter',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Close',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontFamily: 'Inter',
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Opening email app...'),
+                  backgroundColor: Color(0xFF8B5CF6),
+                ),
+              );
+            },
+            child: const Text(
+              'Send Email',
+              style: TextStyle(
+                color: Color(0xFF8B5CF6),
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static void _showBugReportDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text(
+          'Report a Bug',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: const Text(
+          'Thank you for helping us improve!\n\nPlease email bug reports to:\nbugs@focusapp.com\n\nInclude:\n• Description of the issue\n• Steps to reproduce\n• Screenshots if possible',
+          style: TextStyle(
+            color: Color(0xFF8E8E93),
+            fontFamily: 'Inter',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Close',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontFamily: 'Inter',
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Opening email app...'),
+                  backgroundColor: Color(0xFF8B5CF6),
+                ),
+              );
+            },
+            child: const Text(
+              'Send Report',
+              style: TextStyle(
+                color: Color(0xFF8B5CF6),
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

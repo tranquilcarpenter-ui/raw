@@ -62,18 +62,27 @@ class UserDataService {
   }
 
   /// Save user data to Firestore
-  Future<void> saveUserData(String userId, UserData userData) async {
+  /// If [merge] is true, merges with existing data. If false, replaces completely.
+  Future<void> saveUserData(String userId, UserData userData, {bool merge = true}) async {
     try {
-      debugPrint('💾 Saving data for user: $userId');
+      debugPrint('💾 Saving data for user: $userId (merge: $merge)');
       debugPrint(
         '   Name: ${userData.fullName}, Streak: ${userData.dayStreak}, Hours: ${userData.focusHours}',
       );
+      debugPrint('   Username: ${userData.username}');
       debugPrint('   AvatarUrl: ${userData.avatarUrl}');
       debugPrint('   BannerUrl: ${userData.bannerImageUrl}');
       final data = userData.toJson();
+      debugPrint('   JSON fullName: ${data['fullName']}');
+      debugPrint('   JSON username: ${data['username']}');
       debugPrint('   JSON avatarUrl: ${data['avatarUrl']}');
       debugPrint('   JSON bannerImageUrl: ${data['bannerImageUrl']}');
-      await _getUserDoc(userId).set(data, SetOptions(merge: true));
+
+      if (merge) {
+        await _getUserDoc(userId).set(data, SetOptions(merge: true));
+      } else {
+        await _getUserDoc(userId).set(data);
+      }
       debugPrint('✅ Successfully saved data for user $userId to Firestore');
     } catch (e, st) {
       debugPrint('❌ Error saving data for user $userId: $e');

@@ -150,7 +150,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         questionAnswers: _questionAnswers.isNotEmpty ? _questionAnswers : null,
       );
 
-      await UserDataService.instance.saveUserData(user.uid, userData);
+      // For new users, use set (overwrite) instead of merge to ensure clean data
+      await UserDataService.instance.saveUserData(user.uid, userData, merge: false);
 
       // Initialize default "Unset" project for the new user
       await ProjectService.instance.initializeDefaultProject(user.uid);

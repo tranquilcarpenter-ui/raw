@@ -9,6 +9,7 @@ import 'achievement.dart';
 import 'achievements_service.dart';
 import 'achievements_screen.dart';
 import 'main.dart'; // For AppCard widget
+import 'project_service.dart';
 
 /// User Profile Screen - Shows individual user's profile and statistics
 /// Matches the design of the own profile page
@@ -845,6 +846,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
                   const SizedBox(height: 24),
 
+                  // Project Distribution Pie Chart
+                  _buildProjectDistributionGraph(),
+
+                  const SizedBox(height: 24),
+
                   // Time of Day Performance Graph
                   _buildTimeOfDayGraph(),
 
@@ -1219,6 +1225,226 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ),
           ),
           const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProjectDistributionGraph() {
+    return FutureBuilder<Map<String, String>>(
+      future: _loadProjectNames(),
+      builder: (context, snapshot) {
+        final projectNames = snapshot.data ?? {};
+        return _buildProjectDistributionContent(projectNames);
+      },
+    );
+  }
+
+  Future<Map<String, String>> _loadProjectNames() async {
+    try {
+      final projects = await ProjectService.instance.loadAllProjects(widget.userId);
+      final Map<String, String> projectNames = {};
+      for (final project in projects) {
+        projectNames[project.id] = project.name;
+      }
+      return projectNames;
+    } catch (e) {
+      debugPrint('Error loading project names: $e');
+      return {};
+    }
+  }
+
+  String _getProjectDisplayName(String projectId, Map<String, String> projectNames) {
+    // First check if we have the actual project name
+    if (projectNames.containsKey(projectId)) {
+      return projectNames[projectId]!;
+    }
+
+    // Handle "unset" special case
+    if (projectId == 'unset') {
+      return 'Unset';
+    }
+
+    // Format generated project IDs like "project_1" to "Project 1"
+    final match = RegExp(r'^project_(\d+)$').firstMatch(projectId);
+    if (match != null) {
+      return 'Project ${match.group(1)}';
+    }
+
+    // Format generated subproject IDs like "project_1_sub_0" to "Project 1 - Subtask 1"
+    final subMatch = RegExp(r'^project_(\d+)_sub_(\d+)$').firstMatch(projectId);
+    if (subMatch != null) {
+      final projectNum = int.parse(subMatch.group(1)!);
+      final subNum = int.parse(subMatch.group(2)!) + 1; // Add 1 for 1-based indexing
+      return 'Project $projectNum - Subtask $subNum';
+    }
+
+    // Default: return the ID as-is
+    return projectId;
+  }
+
+  Widget _buildProjectDistributionContent(Map<String, String> projectNames) {
+    // Calculate total minutes per project from all focus sessions
+    final Map<String, double> projectMinutes = {};
+
+    for (final session in widget.userData.focusSessions) {
+      final projectId = session.projectId;
+      final minutes = session.duration.inMinutes.toDouble();
+      projectMinutes[projectId] = (projectMinutes[projectId] ?? 0.0) + minutes;
+    }
+
+    // Convert to hours and sort by value
+    final projectHours = projectMinutes.map(
+      (key, value) => MapEntry(key, value / 60.0),
+    );
+
+    // Sort by hours (descending)
+    final sortedEntries = projectHours.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    // If no data, show empty state
+    if (sortedEntries.isEmpty || sortedEntries.every((e) => e.value == 0)) {
+      return AppCard(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Project Distribution',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'No focus sessions recorded yet',
+              style: TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 12,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            const SizedBox(height: 40),
+            const Center(
+              child: Icon(
+                Icons.pie_chart_outline,
+                color: Color(0xFF8E8E93),
+                size: 64,
+              ),
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
+      );
+    }
+
+    // Calculate total hours
+    final totalHours = sortedEntries.fold(0.0, (total, entry) => total + entry.value);
+
+    // Predefined colors for projects (matching the app's color scheme)
+    final List<Color> projectColors = [
+      const Color(0xFF8B5CF6), // Purple
+      const Color(0xFF06B6D4), // Cyan
+      const Color(0xFFFF9500), // Orange
+      const Color(0xFF34C759), // Green
+      const Color(0xFFFF3B30), // Red
+      const Color(0xFFFFCC00), // Yellow
+      const Color(0xFFFF2D55), // Pink
+      const Color(0xFF5856D6), // Indigo
+    ];
+
+    // Build data for pie chart
+    final List<PieChartData> chartData = [];
+    for (int i = 0; i < sortedEntries.length; i++) {
+      final entry = sortedEntries[i];
+      final percentage = (entry.value / totalHours) * 100;
+      chartData.add(PieChartData(
+        projectId: entry.key,
+        hours: entry.value,
+        percentage: percentage,
+        color: projectColors[i % projectColors.length],
+      ));
+    }
+
+    return AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Project Distribution',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Total: ${totalHours.toStringAsFixed(1)} hours',
+            style: const TextStyle(
+              color: Color(0xFF8E8E93),
+              fontSize: 12,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Pie chart
+          RepaintBoundary(
+            child: SizedBox(
+              height: 200,
+              child: CustomPaint(
+                size: const Size(double.infinity, 200),
+                painter: PieChartPainter(data: chartData),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Legend
+          ...chartData.map((item) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: item.color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _getProjectDisplayName(item.projectId, projectNames),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${item.hours.toStringAsFixed(1)}h (${item.percentage.toStringAsFixed(1)}%)',
+                    style: const TextStyle(
+                      color: Color(0xFF8E8E93),
+                      fontSize: 12,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );
