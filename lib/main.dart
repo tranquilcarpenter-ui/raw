@@ -4605,7 +4605,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final userDataProvider = UserDataProvider.of(context);
-    final userData = userDataProvider!.userData;
+    if (userDataProvider == null) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF000000),
+        body: Center(
+          child: Text(
+            'User data not available',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    }
+
+    final userData = userDataProvider.userData;
 
     final profileImageProvider = ProfileImageProvider.of(context);
     final profileImagePath = profileImageProvider?.profileImagePath;
