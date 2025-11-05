@@ -31,14 +31,19 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     // Validate inputs
-    if (_emailController.text.trim().isEmpty) {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
       setState(() {
         _errorMessage = 'Please enter an email address';
       });
       return;
     }
 
-    if (!_emailController.text.trim().contains('@')) {
+    // Use proper email regex validation
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    );
+    if (!emailRegex.hasMatch(email)) {
       setState(() {
         _errorMessage = 'Please enter a valid email address';
       });

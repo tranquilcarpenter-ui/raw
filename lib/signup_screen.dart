@@ -61,14 +61,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _validateEmail() {
     final email = _emailController.text.trim();
-    // Check if email is complete: has @ and ., and has at least 2 chars after the last dot
-    final isValid =
-        email.isNotEmpty &&
-        email.contains('@') &&
-        email.contains('.') &&
-        email.indexOf('@') < email.lastIndexOf('.') &&
-        email.lastIndexOf('.') < email.length - 1 &&
-        email.substring(email.lastIndexOf('.') + 1).length >= 2;
+    // Use proper email regex validation
+    // Pattern: local-part@domain.tld
+    // Allows alphanumeric, dots, hyphens, underscores in local part
+    // Requires valid domain with at least 2 character TLD
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    );
+    final isValid = email.isNotEmpty && emailRegex.hasMatch(email);
     if (isValid != _isEmailValid) {
       setState(() {
         _isEmailValid = isValid;
@@ -463,13 +463,37 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void _validateNameUsername() {
     setState(() => _errorMessage = '');
 
-    if (_displayNameController.text.trim().isEmpty) {
+    final displayName = _displayNameController.text.trim();
+    if (displayName.isEmpty) {
       setState(() => _errorMessage = 'Please enter your display name');
       return;
     }
 
-    if (_usernameController.text.trim().isEmpty) {
+    if (displayName.length < 2) {
+      setState(() => _errorMessage = 'Display name must be at least 2 characters');
+      return;
+    }
+
+    final username = _usernameController.text.trim();
+    if (username.isEmpty) {
       setState(() => _errorMessage = 'Please enter a username');
+      return;
+    }
+
+    // Username validation: 3-20 characters, alphanumeric and underscore only
+    if (username.length < 3) {
+      setState(() => _errorMessage = 'Username must be at least 3 characters');
+      return;
+    }
+
+    if (username.length > 20) {
+      setState(() => _errorMessage = 'Username must be 20 characters or less');
+      return;
+    }
+
+    final usernameRegex = RegExp(r'^[a-zA-Z0-9_]+$');
+    if (!usernameRegex.hasMatch(username)) {
+      setState(() => _errorMessage = 'Username can only contain letters, numbers, and underscores');
       return;
     }
 
@@ -481,6 +505,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     if (_selectedBirthday == null) {
       setState(() => _errorMessage = 'Please select your birthday');
+      return;
+    }
+
+    // Age validation for COPPA compliance (Children's Online Privacy Protection Act)
+    final now = DateTime.now();
+    final age = now.year - _selectedBirthday!.year;
+    final hadBirthdayThisYear = now.month > _selectedBirthday!.month ||
+        (now.month == _selectedBirthday!.month && now.day >= _selectedBirthday!.day);
+    final actualAge = hadBirthdayThisYear ? age : age - 1;
+
+    // Must be at least 13 years old (COPPA requirement)
+    if (actualAge < 13) {
+      setState(() => _errorMessage = 'You must be at least 13 years old to create an account');
+      return;
+    }
+
+    // Reasonable maximum age check (prevent accidental typos)
+    if (actualAge > 120) {
+      setState(() => _errorMessage = 'Please enter a valid birthdate');
+      return;
+    }
+
+    // Date must be in the past
+    if (_selectedBirthday!.isAfter(now)) {
+      setState(() => _errorMessage = 'Birthday cannot be in the future');
       return;
     }
 
