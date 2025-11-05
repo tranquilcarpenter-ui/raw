@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_service.dart';
@@ -37,13 +38,14 @@ class AuthStateProvider extends StatefulWidget {
 class _AuthStateProviderState extends State<AuthStateProvider> {
   User? _user;
   bool _isLoading = true;
+  StreamSubscription<User?>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
 
     // Listen to auth state changes with error handling
-    FirebaseService.instance.auth.authStateChanges().listen(
+    _authSubscription = FirebaseService.instance.auth.authStateChanges().listen(
       (User? user) {
         if (mounted) {
           setState(() {
@@ -71,6 +73,12 @@ class _AuthStateProviderState extends State<AuthStateProvider> {
         });
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
   }
 
   @override
