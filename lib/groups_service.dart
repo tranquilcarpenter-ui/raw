@@ -171,7 +171,13 @@ class GroupsService {
         return false;
       }
 
-      final group = Group.fromJson(groupDoc.data()!);
+      final data = groupDoc.data();
+      if (data == null) {
+        debugPrint('❌ Group document has no data');
+        return false;
+      }
+
+      final group = Group.fromJson(data);
 
       // If user is the creator and last member, delete the group
       if (group.isCreator(userId) && group.memberCount == 1) {
@@ -264,7 +270,10 @@ class GroupsService {
         final groupDoc =
             await _firestore.collection('groups').doc(groupId).get();
         if (groupDoc.exists) {
-          groups.add(Group.fromJson(groupDoc.data()!));
+          final data = groupDoc.data();
+          if (data != null) {
+            groups.add(Group.fromJson(data));
+          }
         }
       }
 
@@ -339,7 +348,14 @@ class GroupsService {
       if (!groupDoc.exists) {
         return null;
       }
-      return Group.fromJson(groupDoc.data()!);
+
+      final data = groupDoc.data();
+      if (data == null) {
+        debugPrint('❌ Group document has no data');
+        return null;
+      }
+
+      return Group.fromJson(data);
     } catch (e) {
       debugPrint('❌ Error getting group: $e');
       return null;
@@ -364,7 +380,10 @@ class GroupsService {
           final groupDoc =
               await _firestore.collection('groups').doc(groupId).get();
           if (groupDoc.exists) {
-            groups.add(Group.fromJson(groupDoc.data()!));
+            final data = groupDoc.data();
+            if (data != null) {
+              groups.add(Group.fromJson(data));
+            }
           }
         }
 
