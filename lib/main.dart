@@ -178,6 +178,7 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
   String? _profileImagePath;
   String? _bannerImagePath;
   String? _currentUserId;
+  StreamSubscription<User?>? _authChangeSubscription;
 
   @override
   void initState() {
@@ -188,7 +189,7 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
 
   void _listenToAuthChanges() {
     // Listen for authentication state changes
-    FirebaseService.instance.auth.authStateChanges().listen((user) async {
+    _authChangeSubscription = FirebaseService.instance.auth.authStateChanges().listen((user) async {
       if (user != null && user.uid != _currentUserId) {
         // User logged in or changed - load their data
         debugPrint('👤 User logged in: ${user.uid}');
@@ -292,6 +293,12 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
     setState(() {
       _bannerImagePath = imagePath;
     });
+  }
+
+  @override
+  void dispose() {
+    _authChangeSubscription?.cancel();
+    super.dispose();
   }
 
   @override
