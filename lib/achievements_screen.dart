@@ -211,113 +211,116 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
   }
 
   Widget _buildAchievementCard(Achievement achievement, bool isUnlocked) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: AppCard(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            // Achievement Badge
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1E),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isUnlocked
-                      ? const Color(0xFFFFD700)
-                      : const Color(0xFF2C2C2E),
-                  width: isUnlocked ? 2 : 1,
+    // PERFORMANCE: RepaintBoundary isolates card repaints
+    return RepaintBoundary(
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: AppCard(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Achievement Badge
+              Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1C1C1E),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isUnlocked
+                        ? const Color(0xFFFFD700)
+                        : const Color(0xFF2C2C2E),
+                    width: isUnlocked ? 2 : 1,
+                  ),
                 ),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: isUnlocked
-                    ? Image.asset(
-                        achievement.iconUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Image.asset(
-                            'assets/images/achievements/stone.png',
-                            fit: BoxFit.cover,
-                          );
-                        },
-                      )
-                    : ColorFiltered(
-                        colorFilter: const ColorFilter.mode(
-                          Colors.black45,
-                          BlendMode.darken,
-                        ),
-                        child: Opacity(
-                          opacity: 0.3,
-                          child: Image.asset(
-                            'assets/images/achievements/stone.png',
-                            fit: BoxFit.cover,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: isUnlocked
+                      ? Image.asset(
+                          achievement.iconUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Image.asset(
+                              'assets/images/achievements/stone.png',
+                              fit: BoxFit.cover,
+                            );
+                          },
+                        )
+                      : ColorFiltered(
+                          colorFilter: const ColorFilter.mode(
+                            Colors.black45,
+                            BlendMode.darken,
+                          ),
+                          child: Opacity(
+                            opacity: 0.3,
+                            child: Image.asset(
+                              'assets/images/achievements/stone.png',
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ),
-                      ),
+                ),
               ),
-            ),
 
-            const SizedBox(width: 16),
+              const SizedBox(width: 16),
 
-            // Achievement Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    achievement.title,
-                    style: TextStyle(
-                      color: isUnlocked ? Colors.white : const Color(0xFF8E8E93),
-                      fontSize: 16,
-                      fontFamily: 'Inter',
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    achievement.description,
-                    style: TextStyle(
-                      color: isUnlocked
-                          ? const Color(0xFF8E8E93)
-                          : const Color(0xFF636366),
-                      fontSize: 13,
-                      fontFamily: 'Inter',
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Icon(
-                        isUnlocked ? Icons.check_circle : Icons.lock,
-                        size: 14,
-                        color: isUnlocked
-                            ? const Color(0xFFFFD700)
-                            : const Color(0xFF636366),
+              // Achievement Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      achievement.title,
+                      style: TextStyle(
+                        color: isUnlocked ? Colors.white : const Color(0xFF8E8E93),
+                        fontSize: 16,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w600,
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        isUnlocked
-                            ? _formatUnlockedDate(achievement.unlockedAt!)
-                            : _getCriteriaText(achievement),
-                        style: TextStyle(
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      achievement.description,
+                      style: TextStyle(
+                        color: isUnlocked
+                            ? const Color(0xFF8E8E93)
+                            : const Color(0xFF636366),
+                        fontSize: 13,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          isUnlocked ? Icons.check_circle : Icons.lock,
+                          size: 14,
                           color: isUnlocked
                               ? const Color(0xFFFFD700)
                               : const Color(0xFF636366),
-                          fontSize: 12,
-                          fontFamily: 'Inter',
-                          fontWeight: FontWeight.w500,
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 4),
+                        Text(
+                          isUnlocked
+                              ? _formatUnlockedDate(achievement.unlockedAt!)
+                              : _getCriteriaText(achievement),
+                          style: TextStyle(
+                            color: isUnlocked
+                                ? const Color(0xFFFFD700)
+                                : const Color(0xFF636366),
+                            fontSize: 12,
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

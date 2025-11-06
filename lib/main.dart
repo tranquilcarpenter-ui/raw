@@ -932,7 +932,8 @@ class _FocusScreenState extends State<FocusScreen>
   Timer? _timer;
   int _selectedMinutes = 60; // Default 60 minutes to match Figma
   int _totalSeconds = 60 * 60;
-  int _remainingSeconds = 60 * 60;
+  // PERFORMANCE: Using ValueNotifier to prevent full widget rebuilds every second
+  late final ValueNotifier<int> _remainingSecondsNotifier;
   bool _isRunning = false;
   bool _isPickerVisible = false;
   late AnimationController _pulseController;
@@ -945,9 +946,14 @@ class _FocusScreenState extends State<FocusScreen>
   String _selectedProjectName = 'Unset';
   String _selectedProjectEmoji = '📝'; // Default emoji for Unset project
 
+  // Helper getter/setter for remaining seconds
+  int get _remainingSeconds => _remainingSecondsNotifier.value;
+  set _remainingSeconds(int value) => _remainingSecondsNotifier.value = value;
+
   @override
   void initState() {
     super.initState();
+    _remainingSecondsNotifier = ValueNotifier<int>(60 * 60);
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -964,6 +970,7 @@ class _FocusScreenState extends State<FocusScreen>
   @override
   void dispose() {
     _timer?.cancel();
+    _remainingSecondsNotifier.dispose();
     _pulseController.dispose();
     _timerScaleController.dispose();
     super.dispose();
@@ -981,9 +988,8 @@ class _FocusScreenState extends State<FocusScreen>
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_remainingSeconds > 0) {
-        setState(() {
-          _remainingSeconds--;
-        });
+        // PERFORMANCE: Direct update without setState - ValueNotifier handles updates
+        _remainingSeconds--;
       } else {
         _onTimerComplete();
         _stopTimer();
@@ -1181,10 +1187,6 @@ class _FocusScreenState extends State<FocusScreen>
 
   @override
   Widget build(BuildContext context) {
-    double progress = _totalSeconds > 0
-        ? 1 - (_remainingSeconds / _totalSeconds)
-        : 0;
-
     // Using responsive layout
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
@@ -1290,6 +1292,7 @@ class _FocusScreenState extends State<FocusScreen>
                 ),
 
                 // Progress circle - Centered lower (drawn first so it's behind interactive elements)
+                // PERFORMANCE: ValueListenableBuilder isolates rebuilds to just the progress circle
                 Positioned(
                   left: 0,
                   right: 0,
@@ -1299,11 +1302,19 @@ class _FocusScreenState extends State<FocusScreen>
                       child: SizedBox(
                         width: 270,
                         height: 270,
-                        child: CustomPaint(
-                          painter: CircularProgressPainter(
-                            progress: progress,
-                            isRunning: _isRunning,
-                          ),
+                        child: ValueListenableBuilder<int>(
+                          valueListenable: _remainingSecondsNotifier,
+                          builder: (context, remainingSeconds, child) {
+                            final progress = _totalSeconds > 0
+                                ? 1 - (remainingSeconds / _totalSeconds)
+                                : 0.0;
+                            return CustomPaint(
+                              painter: CircularProgressPainter(
+                                progress: progress,
+                                isRunning: _isRunning,
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -1322,6 +1333,7 @@ class _FocusScreenState extends State<FocusScreen>
                   ),
 
                 // Timer text - Centered in the circle (always visible when not running)
+                // PERFORMANCE: ValueListenableBuilder for efficient timer display updates
                 if (!_isRunning)
                   Positioned(
                     left: 0,
@@ -1346,14 +1358,19 @@ class _FocusScreenState extends State<FocusScreen>
                                 child: child,
                               );
                             },
-                            child: Text(
-                              '${(_remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_remainingSeconds % 60).toString().padLeft(2, '0')}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 45,
-                                fontFamily: 'Inter',
-                                fontWeight: FontWeight.w400,
-                              ),
+                            child: ValueListenableBuilder<int>(
+                              valueListenable: _remainingSecondsNotifier,
+                              builder: (context, remainingSeconds, child) {
+                                return Text(
+                                  '${(remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(remainingSeconds % 60).toString().padLeft(2, '0')}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 45,
+                                    fontFamily: 'Inter',
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ),
@@ -2064,15 +2081,17 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 else if (searchResults.isNotEmpty)
                   SizedBox(
                     height: 200,
+                    // PERFORMANCE: Removed shrinkWrap - SizedBox provides bounds
                     child: ListView.builder(
-                      shrinkWrap: true,
                       itemCount: searchResults.length,
                       itemBuilder: (context, index) {
                         final entry = searchResults.entries.elementAt(index);
                         final userId = entry.key;
                         final userData = entry.value;
 
+                        // PERFORMANCE: Key helps Flutter identify items efficiently
                         return ListTile(
+                          key: ValueKey(userId),
                           leading: CircleAvatar(
                             backgroundColor: const Color(0xFF2C2C2E),
                             child: userData.avatarUrl != null
@@ -7479,7 +7498,9 @@ class NotificationCenterScreen extends StatelessWidget {
         title = notification.fromUserName;
     }
 
-    return Dismissible(
+    // PERFORMANCE: RepaintBoundary isolates notification tile repaints
+    return RepaintBoundary(
+      child: Dismissible(
       key: Key(notification.id),
       direction: DismissDirection.endToStart,
       background: Container(
@@ -7581,6 +7602,7 @@ class NotificationCenterScreen extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 
