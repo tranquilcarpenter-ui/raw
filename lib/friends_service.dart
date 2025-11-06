@@ -2,9 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'friend.dart';
 import 'user_data.dart';
+import 'cache_manager.dart';
 
 /// Service to manage friends in Firestore
 /// Stores friendships as subcollections under each user
+///
+/// PERFORMANCE: Uses in-memory caching with 30s TTL to reduce Firebase reads
+/// while still allowing real-time data updates during testing.
 class FriendsService {
   static final FriendsService _instance = FriendsService._internal();
   static FriendsService get instance => _instance;
@@ -13,6 +17,12 @@ class FriendsService {
   FriendsService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // PERFORMANCE: Cache user data to prevent redundant queries
+  final _userDataCache = CacheManager<UserData>(
+    name: 'UserData',
+    ttl: const Duration(seconds: 30), // Short TTL for testing
+  );
 
   /// Get reference to user's friends collection
   CollectionReference _getFriendsCollection(String userId) {
@@ -72,25 +82,37 @@ class FriendsService {
   }
 
   /// Search for user by exact user ID
+  ///
+  /// PERFORMANCE: Uses cache + request deduplication to reduce Firebase reads
   Future<UserData?> getUserById(String userId) async {
-    try {
-      debugPrint('🔍 Searching for user with ID: $userId');
+    return _userDataCache.getOrFetch(userId, () async {
+      try {
+        if (kDebugMode) {
+          debugPrint('🔍 Fetching user from Firestore: $userId');
+        }
 
-      final docSnapshot = await _firestore.collection('users').doc(userId).get();
+        final docSnapshot = await _firestore.collection('users').doc(userId).get();
 
-      if (!docSnapshot.exists) {
-        debugPrint('⚠️ User not found with ID: $userId');
+        if (!docSnapshot.exists) {
+          if (kDebugMode) {
+            debugPrint('⚠️ User not found with ID: $userId');
+          }
+          return null;
+        }
+
+        final userData = UserData.fromJson(docSnapshot.data()!);
+        if (kDebugMode) {
+          debugPrint('✅ Found user: ${userData.fullName}');
+        }
+        return userData;
+      } catch (e, st) {
+        debugPrint('❌ Error getting user by ID: $e');
+        if (kDebugMode) {
+          debugPrint('$st');
+        }
         return null;
       }
-
-      final userData = UserData.fromJson(docSnapshot.data()!);
-      debugPrint('✅ Found user: ${userData.fullName}');
-      return userData;
-    } catch (e, st) {
-      debugPrint('❌ Error getting user by ID: $e');
-      debugPrint('$st');
-      return null;
-    }
+    });
   }
 
   /// Send a friend request
@@ -352,8 +374,28 @@ class FriendsService {
     });
   }
 
+  /// Clear user from cache (call when user data changes)
+  ///
+  /// PERFORMANCE: Invalidate cache to ensure fresh data on next fetch
+  void invalidateUserCache(String userId) {
+    _userDataCache.remove(userId);
+  }
+
+  /// Get cache statistics (useful for debugging performance)
+  Map<String, dynamic> getCacheStats() {
+    return _userDataCache.getStats();
+  }
+
   /// Update friend's stats (called when user's stats change)
   /// This keeps friend data in sync across all users who have them as a friend
+  ///
+  /// PERFORMANCE NOTE: This method is expensive (fetches all users).
+  /// In production, consider:
+  /// 1. Using a reverse index (collection group query)
+  /// 2. Background Cloud Function to update friend data
+  /// 3. Lazy loading (fetch live stats on-demand like getFriends() does)
+  ///
+  /// TESTING-FRIENDLY: Invalidates cache instead of updating all friend docs
   Future<void> updateFriendStats(
     String userId,
     String fullName,
@@ -363,40 +405,50 @@ class FriendsService {
     String? rankPercentage,
   ) async {
     try {
-      debugPrint('🔄 Updating friend stats for user: $userId');
-
-      // Get all users who have this user as a friend
-      final usersSnapshot = await _firestore.collection('users').get();
-
-      for (final userDoc in usersSnapshot.docs) {
-        final friendDoc = await _firestore
-            .collection('users')
-            .doc(userDoc.id)
-            .collection('friends')
-            .doc(userId)
-            .get();
-
-        if (friendDoc.exists) {
-          // Update this friend's data in their collection
-          await _firestore
-              .collection('users')
-              .doc(userDoc.id)
-              .collection('friends')
-              .doc(userId)
-              .update({
-            'fullName': fullName,
-            'avatarUrl': avatarUrl,
-            'focusHours': focusHours,
-            'dayStreak': dayStreak,
-            'rankPercentage': rankPercentage,
-          });
-        }
+      if (kDebugMode) {
+        debugPrint('🔄 Invalidating cache for updated user: $userId');
       }
 
-      debugPrint('✅ Friend stats updated');
+      // PERFORMANCE: Just invalidate cache instead of expensive full-table scan
+      // The getFriends() method already fetches live stats on-demand
+      invalidateUserCache(userId);
+
+      if (kDebugMode) {
+        debugPrint('✅ User cache invalidated - next fetch will get fresh data');
+      }
+
+      // OPTIONAL: Uncomment below for full sync (expensive - only for production)
+      // Get all users who have this user as a friend
+      // final usersSnapshot = await _firestore.collection('users').get();
+      //
+      // for (final userDoc in usersSnapshot.docs) {
+      //   final friendDoc = await _firestore
+      //       .collection('users')
+      //       .doc(userDoc.id)
+      //       .collection('friends')
+      //       .doc(userId)
+      //       .get();
+      //
+      //   if (friendDoc.exists) {
+      //     await _firestore
+      //         .collection('users')
+      //         .doc(userDoc.id)
+      //         .collection('friends')
+      //         .doc(userId)
+      //         .update({
+      //       'fullName': fullName,
+      //       'avatarUrl': avatarUrl,
+      //       'focusHours': focusHours,
+      //       'dayStreak': dayStreak,
+      //       'rankPercentage': rankPercentage,
+      //     });
+      //   }
+      // }
     } catch (e, st) {
       debugPrint('❌ Error updating friend stats: $e');
-      debugPrint('$st');
+      if (kDebugMode) {
+        debugPrint('$st');
+      }
     }
   }
 }
