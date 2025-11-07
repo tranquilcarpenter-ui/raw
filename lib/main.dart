@@ -369,6 +369,8 @@ class UserDataProvider extends InheritedWidget {
 }
 
 void main() async {
+  // Enable high refresh rate (120Hz) support for smoother animations
+  // Flutter automatically adapts to device refresh rate on supporting devices
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Firebase via the centralized singleton service.
@@ -706,15 +708,7 @@ class _MainScreenState extends State<MainScreen>
     _updateNavBarVisibility();
   }
 
-  Widget _buildNavItem(
-    String iconPath,
-    int index,
-    String label, {
-    bool useMaterialIcon = false,
-    IconData? materialIcon,
-    bool isProfilePicture = false,
-    bool isCustomImage = false,
-  }) {
+  Widget _buildNavItem(String iconPath, int index, String label) {
     final isSelected = _currentIndex == index;
     return GestureDetector(
       onTap: () {
@@ -723,67 +717,16 @@ class _MainScreenState extends State<MainScreen>
         });
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: isProfilePicture
-            ? Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected ? Colors.white : const Color(0xFF6C6C70),
-                    width: 1.5,
-                  ),
-                ),
-                child: ClipOval(
-                  child: isCustomImage
-                      ? Image.file(
-                          File(iconPath),
-                          width: 24,
-                          height: 24,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Icon(
-                              Icons.person,
-                              color: isSelected
-                                  ? Colors.white
-                                  : const Color(0xFF6C6C70),
-                              size: 18,
-                            );
-                          },
-                        )
-                      : Image.asset(
-                          iconPath,
-                          width: 24,
-                          height: 24,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Icon(
-                              Icons.person,
-                              color: isSelected
-                                  ? Colors.white
-                                  : const Color(0xFF6C6C70),
-                              size: 18,
-                            );
-                          },
-                        ),
-                ),
-              )
-            : useMaterialIcon && materialIcon != null
-            ? Icon(
-                materialIcon,
-                color: isSelected ? Colors.white : const Color(0xFF6C6C70),
-                size: 28,
-              )
-            : SvgPicture.asset(
-                iconPath,
-                width: 24,
-                height: 24,
-                colorFilter: ColorFilter.mode(
-                  isSelected ? Colors.white : const Color(0xFF6C6C70),
-                  BlendMode.srcIn,
-                ),
-              ),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+        child: SvgPicture.asset(
+          iconPath,
+          width: 50,
+          height: 50,
+          colorFilter: ColorFilter.mode(
+            isSelected ? Colors.white : const Color(0xFF6C6C70),
+            BlendMode.srcIn,
+          ),
+        ),
       ),
     );
   }
@@ -870,7 +813,7 @@ class _MainScreenState extends State<MainScreen>
                     // Navigation bar
                     Container(
                       width: double.infinity,
-                      height: 65,
+                      height: 80,
                       decoration: const ShapeDecoration(
                         gradient: LinearGradient(
                           begin: Alignment(0.50, 0.00),
@@ -945,6 +888,9 @@ class _FocusScreenState extends State<FocusScreen>
   String _selectedProjectName = 'Unset';
   String _selectedProjectEmoji = '📝'; // Default emoji for Unset project
 
+  // Cached week calendar to avoid computing on every build
+  List<DateTime> _weekDays = [];
+
   @override
   void initState() {
     super.initState();
@@ -959,6 +905,13 @@ class _FocusScreenState extends State<FocusScreen>
     _timerScaleAnimation = Tween<double>(begin: 1.0, end: 1.5).animate(
       CurvedAnimation(parent: _timerScaleController, curve: Curves.easeInOut),
     );
+    _updateWeekDays();
+  }
+
+  void _updateWeekDays() {
+    final now = DateTime.now();
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    _weekDays = List.generate(7, (index) => weekStart.add(Duration(days: index)));
   }
 
   @override
@@ -1509,14 +1462,9 @@ class _FocusScreenState extends State<FocusScreen>
                               fullName: 'User',
                             );
 
-                        // Get current week days
+                        // Use cached week days
+                        final weekDays = _weekDays;
                         final now = DateTime.now();
-                        final weekStart = now.subtract(
-                          Duration(days: now.weekday - 1),
-                        );
-                        final weekDays = List.generate(7, (index) {
-                          return weekStart.add(Duration(days: index));
-                        });
 
                         return Container(
                           width: 248,
@@ -1760,6 +1708,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
   bool _isScrollingDown = false;
 
   List<Friend> _friends = [];
+  List<Friend> _friendsByMonth = [];
+  List<Friend> _friendsByAllTime = [];
   List<Friend> _pendingRequests = [];
   List<Friend> _outgoingRequests = [];
   bool _loadingFriends = false;
@@ -1789,8 +1739,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
     try {
       final friends = await FriendsService.instance.getFriends(user.uid);
       if (mounted) {
+        // Pre-sort lists once to avoid sorting in setState
+        _friendsByMonth = List.from(friends)
+          ..sort((a, b) => b.focusHoursMonth.compareTo(a.focusHoursMonth));
+        _friendsByAllTime = List.from(friends)
+          ..sort((a, b) => b.focusHours.compareTo(a.focusHours));
+
         setState(() {
-          _friends = friends;
+          _friends = _selectedFilter == 0 ? _friendsByMonth : _friendsByAllTime;
           _loadingFriends = false;
         });
       }
@@ -1962,6 +1918,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     final searchController = TextEditingController();
     Map<String, UserData> searchResults = {};
     bool isSearching = false;
+    Timer? searchDebounce;
 
     await showDialog(
       context: context,
@@ -2000,10 +1957,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       borderSide: BorderSide.none,
                     ),
                   ),
-                  onChanged: (query) async {
+                  onChanged: (query) {
+                    // Cancel previous search timer
+                    searchDebounce?.cancel();
+
                     if (query.trim().isEmpty) {
                       setDialogState(() {
                         searchResults = {};
+                        isSearching = false;
                       });
                       return;
                     }
@@ -2012,36 +1973,39 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       isSearching = true;
                     });
 
-                    // Search by name or ID
-                    Map<String, UserData> results;
-                    if (query.trim().length < 20) {
-                      // Search by name
-                      results = await FriendsService.instance.searchUsersByName(
-                        query.trim(),
+                    // Debounce search by 500ms to avoid excessive Firestore queries
+                    searchDebounce = Timer(const Duration(milliseconds: 500), () async {
+                      // Search by name or ID
+                      Map<String, UserData> results;
+                      if (query.trim().length < 20) {
+                        // Search by name
+                        results = await FriendsService.instance.searchUsersByName(
+                          query.trim(),
+                        );
+                      } else {
+                        // Search by ID (if query looks like a user ID)
+                        final userById = await FriendsService.instance
+                            .getUserById(query.trim());
+                        results = userById != null
+                            ? {query.trim(): userById}
+                            : {};
+                      }
+
+                      // Filter out the current user from search results
+                      results.remove(user.uid);
+
+                      // Also filter out users who are already friends or have pending requests
+                      final existingUserIds = await FriendsService.instance
+                          .getExistingConnectionIds(user.uid);
+
+                      results.removeWhere(
+                        (userId, _) => existingUserIds.contains(userId),
                       );
-                    } else {
-                      // Search by ID (if query looks like a user ID)
-                      final userById = await FriendsService.instance
-                          .getUserById(query.trim());
-                      results = userById != null
-                          ? {query.trim(): userById}
-                          : {};
-                    }
 
-                    // Filter out the current user from search results
-                    results.remove(user.uid);
-
-                    // Also filter out users who are already friends or have pending requests
-                    final existingUserIds = await FriendsService.instance
-                        .getExistingConnectionIds(user.uid);
-
-                    results.removeWhere(
-                      (userId, _) => existingUserIds.contains(userId),
-                    );
-
-                    setDialogState(() {
-                      searchResults = results;
-                      isSearching = false;
+                      setDialogState(() {
+                        searchResults = results;
+                        isSearching = false;
+                      });
                     });
                   },
                 ),
@@ -2176,16 +2140,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
       onTap: () {
         setState(() {
           _selectedFilter = index;
-          // Re-sort friends based on selected filter
-          if (index == 0) {
-            // Sort by monthly hours
-            _friends.sort(
-              (a, b) => b.focusHoursMonth.compareTo(a.focusHoursMonth),
-            );
-          } else {
-            // Sort by all-time hours
-            _friends.sort((a, b) => b.focusHours.compareTo(a.focusHours));
-          }
+          // Swap to pre-sorted list instead of sorting
+          _friends = index == 0 ? _friendsByMonth : _friendsByAllTime;
         });
       },
       child: Container(
@@ -4078,6 +4034,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   List<Achievement> _achievements = [];
   bool _isLoadingAchievements = true;
+  UserData? _lastUserData; // Track last userData to avoid redundant loads
+  Future<Map<String, String>>? _projectNamesFuture; // Cached future for project names
+
+  // Cache for activity graph data to avoid expensive recomputation
+  final Map<String, List<double>> _activityDataCache = {};
+  final Map<String, List<String>> _activityLabelsCache = {};
+
+  // Cache for project distribution calculations
+  List<MapEntry<String, double>>? _cachedProjectData;
+  int? _lastSessionsHash;
 
   final ScreenshotController _screenshotController = ScreenshotController();
 
@@ -4149,13 +4115,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _loadCounts();
+
+    // Cache project names future to avoid redundant Firestore queries
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _projectNamesFuture = _loadProjectNames(user.uid);
+    }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Reload achievements whenever UserData changes (from UserDataProvider)
-    _loadAchievements();
+    // Only reload achievements if UserData actually changed
+    final userDataProvider = UserDataProvider.of(context);
+    final currentUserData = userDataProvider?.userData;
+
+    if (_lastUserData != currentUserData) {
+      _lastUserData = currentUserData;
+      _loadAchievements();
+    }
   }
 
   Future<void> _loadAchievements() async {
@@ -4913,11 +4891,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                                 child: ClipOval(
                                   child: profileImagePath != null
-                                      ? buildImageFromPath(
-                                          profileImagePath,
-                                          fit: BoxFit.cover,
-                                          width: 120,
-                                          height: 120,
+                                      ? AspectRatio(
+                                          aspectRatio: 1.0,
+                                          child: buildImageFromPath(
+                                            profileImagePath,
+                                            fit: BoxFit.cover,
+                                            width: 120,
+                                            height: 120,
+                                            alignment: Alignment.center,
+                                          ),
                                         )
                                       : const Icon(
                                           Icons.person,
@@ -5002,9 +4984,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => SettingsScreen(
-                                  onScrollDirectionChanged:
-                                      (isScrollingDown) {},
+                                builder: (context) => const SettingsScreen(
+                                  showBackButton: true,
                                 ),
                               ),
                             );
@@ -5350,9 +5331,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final now = DateTime.now();
     final daysBack = _currentOffset * _daysInPeriod;
 
-    // Get data for the current period
-    List<double> periodData = [];
-    List<String> labels = [];
+    // Create cache key based on period, offset, and userData hash
+    final cacheKey = '$_selectedPeriod-$_currentOffset-${userData.hashCode}';
+
+    // Get data for the current period (use cache if available)
+    List<double> periodData;
+    List<String> labels;
+
+    if (_activityDataCache.containsKey(cacheKey)) {
+      // Use cached data
+      periodData = _activityDataCache[cacheKey]!;
+      labels = _activityLabelsCache[cacheKey]!;
+    } else {
+      // Compute data
+      periodData = [];
+      labels = [];
 
     if (_selectedPeriod == 0) {
       // Week: Show current week (Monday-Sunday)
@@ -5446,6 +5439,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         monthlyData.add(monthTotal);
       }
       periodData = monthlyData;
+    }
+
+      // Cache the computed data
+      _activityDataCache[cacheKey] = periodData;
+      _activityLabelsCache[cacheKey] = labels;
     }
 
     // Find max value for scaling
@@ -5903,7 +5901,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     return FutureBuilder<Map<String, String>>(
-      future: _loadProjectNames(user.uid),
+      future: _projectNamesFuture ?? Future.value({}),
       builder: (context, snapshot) {
         final projectNames = snapshot.data ?? {};
         return _buildProjectDistributionContent(userData, projectNames);
@@ -5962,23 +5960,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
     UserData userData,
     Map<String, String> projectNames,
   ) {
-    // Calculate total minutes per project from all focus sessions
-    final Map<String, double> projectMinutes = {};
+    // Check cache to avoid expensive computation
+    final currentSessionsHash = userData.focusSessions.hashCode;
+    List<MapEntry<String, double>> sortedEntries;
 
-    for (final session in userData.focusSessions) {
-      final projectId = session.projectId;
-      final minutes = session.duration.inMinutes.toDouble();
-      projectMinutes[projectId] = (projectMinutes[projectId] ?? 0.0) + minutes;
+    if (_cachedProjectData != null && _lastSessionsHash == currentSessionsHash) {
+      // Use cached data
+      sortedEntries = _cachedProjectData!;
+    } else {
+      // Calculate total minutes per project from all focus sessions
+      final Map<String, double> projectMinutes = {};
+
+      for (final session in userData.focusSessions) {
+        final projectId = session.projectId;
+        final minutes = session.duration.inMinutes.toDouble();
+        projectMinutes[projectId] = (projectMinutes[projectId] ?? 0.0) + minutes;
+      }
+
+      // Convert to hours and sort by value
+      final projectHours = projectMinutes.map(
+        (key, value) => MapEntry(key, value / 60.0),
+      );
+
+      // Sort by hours (descending)
+      sortedEntries = projectHours.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      // Cache the result
+      _cachedProjectData = sortedEntries;
+      _lastSessionsHash = currentSessionsHash;
     }
-
-    // Convert to hours and sort by value
-    final projectHours = projectMinutes.map(
-      (key, value) => MapEntry(key, value / 60.0),
-    );
-
-    // Sort by hours (descending)
-    final sortedEntries = projectHours.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
 
     // If no data, show empty state
     if (sortedEntries.isEmpty || sortedEntries.every((e) => e.value == 0)) {

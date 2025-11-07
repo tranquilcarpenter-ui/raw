@@ -10,13 +10,14 @@ class AuthScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('assets/images/welcomebackground.png'),
-            fit: BoxFit.cover,
+      body: RepaintBoundary(
+        child: Container(
+          decoration: const BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage('assets/images/welcomebackground.png'),
+              fit: BoxFit.cover,
+            ),
           ),
-        ),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
@@ -152,6 +153,7 @@ class AuthScreen extends StatelessWidget {
             ],
             ),
           ),
+        ),
         ),
       ),
     );

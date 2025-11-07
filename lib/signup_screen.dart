@@ -40,6 +40,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final int _totalPages =
       11; // 3 info pages + 7 question pages + 1 signature page
 
+  // Cache pages to avoid rebuilding on every swipe
+  final Map<int, Widget> _cachedPages = {};
+
   @override
   void initState() {
     super.initState();
@@ -273,6 +276,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 },
                 physics: const NeverScrollableScrollPhysics(),
                 itemBuilder: (context, index) {
+                  // Use cached pages to avoid rebuilding on every swipe
+                  if (_cachedPages.containsKey(index)) {
+                    return _cachedPages[index]!;
+                  }
+
                   Widget page;
                   switch (index) {
                     case 0:
@@ -299,10 +307,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     default:
                       page = Container();
                   }
-                  return RepaintBoundary(
+
+                  final cachedPage = RepaintBoundary(
                     key: ValueKey(index),
                     child: page,
                   );
+
+                  // Cache the page for future use
+                  _cachedPages[index] = cachedPage;
+
+                  return cachedPage;
                 },
               ),
             ),
