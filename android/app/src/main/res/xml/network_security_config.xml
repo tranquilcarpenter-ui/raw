@@ -16,11 +16,12 @@
         <!-- Local network IP addresses (common ranges for home/office networks) -->
         <!-- Update these if your development machine IP changes -->
         <domain includeSubdomains="true">192.168.0.45</domain>
+        <domain includeSubdomains="true">192.168.1.11</domain>
         <domain includeSubdomains="true">192.168.1.12</domain>
     </domain-config>
 
     <!-- For debugging: Allow all cleartext traffic (ONLY USE FOR DEBUGGING)
          Uncomment the line below if you need to allow all HTTP traffic temporarily
          Remember to comment it back out when done! -->
-    <!-- <base-config cleartextTrafficPermitted="true" /> -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

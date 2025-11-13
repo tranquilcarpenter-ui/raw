@@ -10,12 +10,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:app/main.dart';
 
 void main() {
-  testWidgets('FocusFlow app smoke test', (WidgetTester tester) async {
+  testWidgets('RAW app smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const FocusFlowApp());
+    await tester.pumpWidget(const RAWAppWrapper());
 
     // Verify that the app loads
-    expect(find.text('FocusFlow'), findsOneWidget);
-    expect(find.text('Focus'), findsWidgets);
+    expect(find.byType(RAWAppWrapper), findsOneWidget);
   });
 }

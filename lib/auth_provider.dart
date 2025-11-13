@@ -36,11 +36,14 @@ class AuthStateProvider extends StatefulWidget {
 
 class _AuthStateProviderState extends State<AuthStateProvider> {
   User? _user;
-  bool _isLoading = true;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
+
+    // Get current user immediately (preloaded during splash screen)
+    _user = FirebaseService.instance.auth.currentUser;
 
     // Listen to auth state changes with error handling
     FirebaseService.instance.auth.authStateChanges().listen(
@@ -62,15 +65,6 @@ class _AuthStateProviderState extends State<AuthStateProvider> {
         }
       },
     );
-
-    // Fallback: If no auth state change is received within 3 seconds, stop loading
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted && _isLoading) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    });
   }
 
   @override

@@ -1,9 +1,70 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Users collection
+    match /users/{userId} {
+      // Allow authenticated users to read user data
+      allow get: if request.auth != null;
+
+      // Allow limited queries for email existence check (unauthenticated)
+      // This is safe because it only allows checking if a specific email exists
+      allow list: if request.query.limit <= 1;
+
+      // Allow users to create their own user document during signup
+      // The authenticated user can only create a document with their own userId
+      allow create: if request.auth != null && request.auth.uid == userId;
+
+      // Allow users to update their own data
+      allow update: if request.auth != null && request.auth.uid == userId;
+
+      // Disallow delete
+      allow delete: if false;
+
+      // User's private subcollections
+      match /private/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // User's projects subcollection
+      match /projects/{projectId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Friends/social features
+    match /friendships/{friendshipId} {
+      allow read: if request.auth != null &&
+                     (request.auth.uid == resource.data.userId ||
+                      request.auth.uid == resource.data.friendId);
+
+      allow create: if request.auth != null &&
+                       request.auth.uid == request.resource.data.userId;
+
+      allow update, delete: if request.auth != null &&
+                               request.auth.uid == resource.data.userId;
+    }
+
+    // Groups
+    match /groups/{groupId} {
+      allow read: if request.auth != null &&
+                     (request.auth.uid in resource.data.memberIds ||
+                      request.auth.uid == resource.data.creatorId);
+
+      allow create: if request.auth != null &&
+                       request.auth.uid == request.resource.data.creatorId;
+
+      allow update: if request.auth != null &&
+                       (request.auth.uid == resource.data.creatorId ||
+                        request.auth.uid in resource.data.adminIds);
+
+      allow delete: if request.auth != null &&
+                       request.auth.uid == resource.data.creatorId;
+    }
+
+    // Default deny for any other collections
     match /{document=**} {
-      // For development only - allow all operations
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

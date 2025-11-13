@@ -26,7 +26,16 @@
       "Bash(powershell -Command \"(Get-Content ''c:\\Users\\Home\\app\\lib\\user_profile_screen.dart'').Count\")",
       "Bash(powershell -Command \"(Get-Content ''c:\\Users\\Home\\app\\lib\\main.dart'').Count\")",
       "Bash(nul)",
-      "Bash(clip)"
+      "Bash(clip)",
+      "Bash(firebase deploy:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(powershell -Command \"Stop-Process -Id 26600 -Force\")",
+      "Bash(powershell -Command \"Stop-Process -Id 19584 -Force\")",
+      "Bash(powershell -Command \"(Get-Content ''c:\\Users\\Home\\RAW\\lib\\auth_screen.dart'').Count\")",
+      "Bash(powershell:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

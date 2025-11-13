@@ -2,7 +2,17 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'group.dart';
+import 'user_data.dart';
 import 'user_data_service.dart';
+
+/// Constants for groups service
+class GroupsServiceConstants {
+  // Batch processing
+  static const int firestoreBatchSize = 10; // Firestore whereIn/getAll limit
+
+  // Invite code
+  static const int inviteCodeLength = 6;
+}
 
 /// Service to manage groups in Firestore
 class GroupsService {
@@ -14,12 +24,14 @@ class GroupsService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Generate a unique 6-character invite code
+  /// Generate a unique invite code
   String _generateInviteCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final random = Random();
-    return List.generate(6, (index) => chars[random.nextInt(chars.length)])
-        .join();
+    return List.generate(
+      GroupsServiceConstants.inviteCodeLength,
+      (index) => chars[random.nextInt(chars.length)],
+    ).join();
   }
 
   /// Create a new group
@@ -291,31 +303,36 @@ class GroupsService {
           .collection('members')
           .get();
 
+      final memberDataList = membersSnapshot.docs
+          .map((doc) => GroupMember.fromJson(doc.data()))
+          .toList();
+
+      if (memberDataList.isEmpty) {
+        debugPrint('✅ No members found');
+        return [];
+      }
+
+      // Batch fetch user data to avoid N+1 queries
+      final userIds = memberDataList.map((m) => m.userId).toList();
+      final userDataMap = await _batchGetUsers(userIds);
+
       final members = <GroupMember>[];
 
-      // Fetch live statistics for each member
-      for (final doc in membersSnapshot.docs) {
-        final memberData = GroupMember.fromJson(doc.data());
+      // Update member data with live statistics
+      for (final memberData in memberDataList) {
+        final userData = userDataMap[memberData.userId];
 
-        // Fetch current user data to get latest statistics
-        try {
-          final userData = await UserDataService.instance.loadUserData(memberData.userId);
-          if (userData != null) {
-            // Update member with live statistics (including monthly hours)
-            members.add(memberData.copyWith(
-              fullName: userData.fullName,
-              avatarUrl: userData.avatarUrl,
-              focusHours: userData.focusHours,
-              focusHoursMonth: userData.focusHoursThisMonth,
-              dayStreak: userData.dayStreak,
-            ));
-          } else {
-            // Use cached data if user not found
-            members.add(memberData);
-          }
-        } catch (e) {
-          debugPrint('⚠️ Error fetching stats for member ${memberData.userId}: $e');
-          // Use cached data if stats fetch fails
+        if (userData != null) {
+          // Update member with live statistics (including monthly hours)
+          members.add(memberData.copyWith(
+            fullName: userData.fullName,
+            avatarUrl: userData.avatarUrl,
+            focusHours: userData.focusHours,
+            focusHoursMonth: userData.focusHoursThisMonth,
+            dayStreak: userData.dayStreak,
+          ));
+        } else {
+          // Use cached data if user not found
           members.add(memberData);
         }
       }
@@ -329,6 +346,44 @@ class GroupsService {
       debugPrint('❌ Error loading members: $e');
       debugPrint('$st');
       return [];
+    }
+  }
+
+  /// Batch fetch user data to avoid N+1 queries
+  /// Returns a map of userId -> UserData
+  Future<Map<String, UserData>> _batchGetUsers(List<String> userIds) async {
+    if (userIds.isEmpty) return {};
+
+    try {
+      debugPrint('📦 Batch fetching ${userIds.length} users');
+
+      final userDataMap = <String, UserData>{};
+
+      // Firestore 'whereIn' supports up to a limited number of items per query
+      // Split into batches
+      for (int i = 0; i < userIds.length; i += GroupsServiceConstants.firestoreBatchSize) {
+        final batchIds = userIds.skip(i).take(GroupsServiceConstants.firestoreBatchSize).toList();
+
+        // Use whereIn query to fetch multiple documents in one query
+        final querySnapshot = await _firestore
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: batchIds)
+            .get();
+
+        for (final doc in querySnapshot.docs) {
+          if (doc.exists) {
+            final userData = UserData.fromJson(doc.data());
+            userDataMap[doc.id] = userData;
+          }
+        }
+      }
+
+      debugPrint('✅ Batch fetched ${userDataMap.length} users');
+      return userDataMap;
+    } catch (e, st) {
+      debugPrint('❌ Error batch fetching users: $e');
+      debugPrint('$st');
+      return {};
     }
   }
 

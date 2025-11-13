@@ -10,6 +10,7 @@ import 'dev_config.local.dart';
 class FirebaseService {
   static final FirebaseService _instance = FirebaseService._internal();
   static bool _initialized = false;
+  static bool _emulatorsConfigured = false;
 
   factory FirebaseService() {
     return _instance;
@@ -21,7 +22,11 @@ class FirebaseService {
 
   Future<void> initialize() async {
     if (_initialized) {
-      debugPrint('FirebaseService: already marked initialized - returning');
+      debugPrint('FirebaseService: already marked initialized - checking emulators');
+      // Still configure emulators if not done yet
+      if (!_emulatorsConfigured && kDebugMode) {
+        await _configureEmulatorsIfNeeded();
+      }
       return;
     }
 
@@ -35,6 +40,10 @@ class FirebaseService {
           'FirebaseService: detected existing Firebase app(s); marking initialized',
         );
         _initialized = true;
+        // Still configure emulators if not done yet
+        if (!_emulatorsConfigured && kDebugMode) {
+          await _configureEmulatorsIfNeeded();
+        }
         return;
       }
     } catch (err, st) {
@@ -93,6 +102,13 @@ class FirebaseService {
   ///   (UserDataService has a helper to configure Firestore emulator).
   Future<void> _configureEmulatorsIfNeeded() async {
     if (!kDebugMode) return;
+
+    if (_emulatorsConfigured) {
+      debugPrint('FirebaseService: Emulators already configured - skipping');
+      return;
+    }
+
+    debugPrint('FirebaseService: Configuring emulators...');
 
     try {
       // Priority order for emulator host:
@@ -256,5 +272,9 @@ class FirebaseService {
         debugPrint('$st2');
       }
     }
+
+    // Mark emulators as configured to prevent multiple calls
+    _emulatorsConfigured = true;
+    debugPrint('FirebaseService: Emulators configuration complete');
   }
 }

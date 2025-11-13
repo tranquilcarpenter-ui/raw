@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'achievement.dart';
 import 'achievements_service.dart';
 import 'main.dart'; // For AppCard widget
@@ -27,15 +26,18 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
   Future<void> _loadAchievements() async {
     // Use provided userId or fall back to current user
     String? userId = widget.userId;
+
+    // If no userId provided, we can't load achievements
     if (userId == null) {
-      final user = firebase_auth.FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-      userId = user.uid;
+      setState(() {
+        _isLoading = false;
+      });
+      return;
     }
 
     try {
-      final achievements =
-          await AchievementsService.instance.getUserAchievements(userId);
+      final achievements = await AchievementsService.instance
+          .getUserAchievements(userId);
 
       if (mounted) {
         setState(() {
@@ -68,9 +70,12 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final unlockedAchievements =
-        _achievements.where((a) => a.isUnlocked).toList();
-    final lockedAchievements = _achievements.where((a) => !a.isUnlocked).toList();
+    final unlockedAchievements = _achievements
+        .where((a) => a.isUnlocked)
+        .toList();
+    final lockedAchievements = _achievements
+        .where((a) => !a.isUnlocked)
+        .toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
@@ -93,11 +98,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
         centerTitle: false,
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: Colors.white,
-              ),
-            )
+          ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : SingleChildScrollView(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -179,8 +180,10 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      ...unlockedAchievements.map((achievement) =>
-                          _buildAchievementCard(achievement, true)),
+                      ...unlockedAchievements.map(
+                        (achievement) =>
+                            _buildAchievementCard(achievement, true),
+                      ),
                       const SizedBox(height: 24),
                     ],
 
@@ -198,8 +201,10 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      ...lockedAchievements.map((achievement) =>
-                          _buildAchievementCard(achievement, false)),
+                      ...lockedAchievements.map(
+                        (achievement) =>
+                            _buildAchievementCard(achievement, false),
+                      ),
                     ],
 
                     const SizedBox(height: 24),
@@ -270,7 +275,9 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                   Text(
                     achievement.title,
                     style: TextStyle(
-                      color: isUnlocked ? Colors.white : const Color(0xFF8E8E93),
+                      color: isUnlocked
+                          ? Colors.white
+                          : const Color(0xFF8E8E93),
                       fontSize: 16,
                       fontFamily: 'Inter',
                       fontWeight: FontWeight.w600,

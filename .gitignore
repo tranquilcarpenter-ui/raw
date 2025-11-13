@@ -52,3 +52,7 @@ ui-debug.log
 
 # Local dev configuration (contains machine-specific IPs)
 lib/dev_config.local.dart
+
+# Windows reserved device names
+nul
+NUL

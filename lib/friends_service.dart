@@ -3,6 +3,37 @@ import 'package:flutter/foundation.dart';
 import 'friend.dart';
 import 'user_data.dart';
 
+/// Constants for friends service
+class FriendsServiceConstants {
+  // Search validation
+  static const int searchQueryMinLength = 2;
+  static const int searchQueryMaxLength = 50;
+  static const int searchResultsLimit = 10;
+
+  // User ID validation (Firebase Auth UIDs)
+  static const int userIdMinLength = 20;
+  static const int userIdMaxLength = 40;
+
+  // Rate limiting
+  static const int maxFriendRequestsPerHour = 10;
+  static const Duration rateLimitWindow = Duration(hours: 1);
+
+  // Batch processing
+  static const int firestoreBatchSize = 10; // Firestore whereIn/getAll limit
+}
+
+/// Result class for friend request operations
+class FriendRequestResult {
+  final bool success;
+  final String? errorMessage;
+
+  FriendRequestResult({required this.success, this.errorMessage});
+
+  factory FriendRequestResult.success() => FriendRequestResult(success: true);
+  factory FriendRequestResult.failure(String message) =>
+      FriendRequestResult(success: false, errorMessage: message);
+}
+
 /// Service to manage friends in Firestore
 /// Stores friendships as subcollections under each user
 class FriendsService {
@@ -30,18 +61,68 @@ class FriendsService {
     }
   }
 
-  /// Search for users by username
-  /// Returns map of userId -> UserData
+  /// Search for users by username with input validation
+  ///
+  /// Performs a case-insensitive prefix search on usernames in Firestore.
+  /// Includes comprehensive input validation to prevent injection attacks
+  /// and performance issues.
+  ///
+  /// **Validation Rules:**
+  /// - Minimum length: 2 characters
+  /// - Maximum length: 50 characters
+  /// - Allowed characters: alphanumeric, spaces, dots, underscores, hyphens
+  ///
+  /// **Security Features:**
+  /// - Input sanitization to prevent injection attacks
+  /// - Length validation to prevent performance degradation
+  /// - Character whitelist to block malicious input
+  ///
+  /// **Parameters:**
+  /// - [query]: Username search query (case-insensitive)
+  ///
+  /// **Returns:**
+  /// - Map of userId to UserData for matching users (max 10 results)
+  /// - Empty map if validation fails or no matches found
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final results = await searchUsersByName('john');
+  /// results.forEach((userId, userData) {
+  ///   print('Found: ${userData.fullName} (@${userData.username})');
+  /// });
+  /// ```
   Future<Map<String, UserData>> searchUsersByName(String query) async {
     try {
       debugPrint('🔍 Searching for users with username: $query');
 
-      if (query.trim().isEmpty) {
+      // Input validation
+      final sanitizedQuery = query.trim();
+
+      if (sanitizedQuery.isEmpty) {
+        return {};
+      }
+
+      // Validate length to prevent performance issues
+      if (sanitizedQuery.length < FriendsServiceConstants.searchQueryMinLength) {
+        debugPrint('⚠️ Query too short (minimum ${FriendsServiceConstants.searchQueryMinLength} characters)');
+        return {};
+      }
+
+      if (sanitizedQuery.length > FriendsServiceConstants.searchQueryMaxLength) {
+        debugPrint('⚠️ Query too long (maximum ${FriendsServiceConstants.searchQueryMaxLength} characters)');
+        return {};
+      }
+
+      // Sanitize input: remove potentially dangerous characters
+      // Allow only alphanumeric, spaces, and common safe characters
+      final sanitizedPattern = RegExp(r'^[a-zA-Z0-9\s._-]+$');
+      if (!sanitizedPattern.hasMatch(sanitizedQuery)) {
+        debugPrint('⚠️ Query contains invalid characters');
         return {};
       }
 
       // Convert query to lowercase for case-insensitive search
-      final lowercaseQuery = query.trim().toLowerCase();
+      final lowercaseQuery = sanitizedQuery.toLowerCase();
 
       // Query users collection by username
       // Note: Firestore doesn't support full-text search natively
@@ -50,7 +131,7 @@ class FriendsService {
           .collection('users')
           .where('username', isGreaterThanOrEqualTo: lowercaseQuery)
           .where('username', isLessThanOrEqualTo: '$lowercaseQuery\uf8ff')
-          .limit(10)
+          .limit(FriendsServiceConstants.searchResultsLimit)
           .get();
 
       final users = <String, UserData>{};
@@ -76,7 +157,30 @@ class FriendsService {
     try {
       debugPrint('🔍 Searching for user with ID: $userId');
 
-      final docSnapshot = await _firestore.collection('users').doc(userId).get();
+      // Input validation for userId
+      final sanitizedUserId = userId.trim();
+
+      if (sanitizedUserId.isEmpty) {
+        debugPrint('⚠️ User ID is empty');
+        return null;
+      }
+
+      // Validate userId format (Firebase UIDs are typically 28 chars, alphanumeric)
+      // Allow reasonable length for Firebase Auth UIDs
+      if (sanitizedUserId.length < FriendsServiceConstants.userIdMinLength ||
+          sanitizedUserId.length > FriendsServiceConstants.userIdMaxLength) {
+        debugPrint('⚠️ User ID has invalid length (expected ${FriendsServiceConstants.userIdMinLength}-${FriendsServiceConstants.userIdMaxLength} characters)');
+        return null;
+      }
+
+      // Validate that userId contains only safe characters (alphanumeric and hyphens)
+      final userIdPattern = RegExp(r'^[a-zA-Z0-9-_]+$');
+      if (!userIdPattern.hasMatch(sanitizedUserId)) {
+        debugPrint('⚠️ User ID contains invalid characters');
+        return null;
+      }
+
+      final docSnapshot = await _firestore.collection('users').doc(sanitizedUserId).get();
 
       if (!docSnapshot.exists) {
         debugPrint('⚠️ User not found with ID: $userId');
@@ -93,15 +197,65 @@ class FriendsService {
     }
   }
 
-  /// Send a friend request
-  Future<bool> sendFriendRequest(String currentUserId, String friendUserId) async {
+  /// Send a friend request with rate limiting and validation
+  ///
+  /// Creates a pending friend request between two users. Includes
+  /// comprehensive validation and rate limiting to prevent spam.
+  ///
+  /// **Validation Checks:**
+  /// - Prevents self-friending
+  /// - Rate limit: Maximum 10 requests per hour
+  /// - Prevents duplicate requests
+  /// - Validates both users exist
+  ///
+  /// **Rate Limiting:**
+  /// - Tracks requests sent in the last hour
+  /// - Returns specific error message when limit exceeded
+  /// - Helps prevent spam and abuse
+  ///
+  /// **Parameters:**
+  /// - [currentUserId]: ID of user sending the request
+  /// - [friendUserId]: ID of user to send request to
+  ///
+  /// **Returns:**
+  /// - [FriendRequestResult] with success status and optional error message
+  ///
+  /// **Possible Failures:**
+  /// - Self-friending attempt
+  /// - Rate limit exceeded (10/hour)
+  /// - Request already exists
+  /// - User not found
+  /// - Firestore error
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final result = await sendFriendRequest(myUserId, friendUserId);
+  /// if (result.success) {
+  ///   print('Friend request sent!');
+  /// } else {
+  ///   print('Error: ${result.errorMessage}');
+  /// }
+  /// ```
+  Future<FriendRequestResult> sendFriendRequest(String currentUserId, String friendUserId) async {
     try {
       debugPrint('📤 Sending friend request: $currentUserId -> $friendUserId');
 
       // Don't allow adding yourself as a friend
       if (currentUserId == friendUserId) {
         debugPrint('⚠️ Cannot add yourself as a friend');
-        return false;
+        return FriendRequestResult.failure('You cannot add yourself as a friend');
+      }
+
+      // Rate limiting: Check recent friend requests
+      final rateLimitStart = DateTime.now().subtract(FriendsServiceConstants.rateLimitWindow);
+      final recentRequestsQuery = await _getFriendsCollection(currentUserId)
+          .where('addedAt', isGreaterThan: Timestamp.fromDate(rateLimitStart))
+          .where('isRequester', isEqualTo: true)
+          .get();
+
+      if (recentRequestsQuery.docs.length >= FriendsServiceConstants.maxFriendRequestsPerHour) {
+        debugPrint('⚠️ Rate limit exceeded: ${recentRequestsQuery.docs.length} requests in the last hour');
+        return FriendRequestResult.failure('Too many requests. Please wait an hour before sending more friend requests (limit: ${FriendsServiceConstants.maxFriendRequestsPerHour}/hour)');
       }
 
       // Check if already friends or request exists
@@ -111,21 +265,21 @@ class FriendsService {
 
       if (existingFriend.exists) {
         debugPrint('⚠️ Friend request already exists or already friends');
-        return false;
+        return FriendRequestResult.failure('Friend request already exists or you are already friends');
       }
 
       // Get friend's data
       final friendData = await getUserById(friendUserId);
       if (friendData == null) {
         debugPrint('❌ Friend user not found');
-        return false;
+        return FriendRequestResult.failure('User not found');
       }
 
       // Get current user's data
       final currentUserData = await getUserById(currentUserId);
       if (currentUserData == null) {
         debugPrint('❌ Current user not found');
-        return false;
+        return FriendRequestResult.failure('Your user data could not be loaded');
       }
 
       final now = DateTime.now();
@@ -168,11 +322,11 @@ class FriendsService {
           .set(incomingRequest.toJson());
 
       debugPrint('✅ Friend request sent successfully');
-      return true;
+      return FriendRequestResult.success();
     } catch (e, st) {
       debugPrint('❌ Error sending friend request: $e');
       debugPrint('$st');
-      return false;
+      return FriendRequestResult.failure('An error occurred while sending the friend request');
     }
   }
 
@@ -244,32 +398,37 @@ class FriendsService {
           .where('status', isEqualTo: FriendRequestStatus.accepted.name)
           .get();
 
+      final friendDataList = querySnapshot.docs
+          .map((doc) => Friend.fromJson(doc.data() as Map<String, dynamic>))
+          .toList();
+
+      if (friendDataList.isEmpty) {
+        debugPrint('✅ No friends found');
+        return [];
+      }
+
+      // Batch fetch user data to avoid N+1 queries
+      final userIds = friendDataList.map((f) => f.userId).toList();
+      final userDataMap = await _batchGetUsers(userIds);
+
       final friends = <Friend>[];
 
-      // Fetch live statistics for each friend
-      for (final doc in querySnapshot.docs) {
-        final friendData = Friend.fromJson(doc.data() as Map<String, dynamic>);
+      // Update friend data with live statistics
+      for (final friendData in friendDataList) {
+        final userData = userDataMap[friendData.userId];
 
-        // Fetch current user data to get latest statistics
-        try {
-          final userData = await getUserById(friendData.userId);
-          if (userData != null) {
-            // Update friend with live statistics (including monthly hours)
-            friends.add(friendData.copyWith(
-              fullName: userData.fullName,
-              avatarUrl: userData.avatarUrl,
-              focusHours: userData.focusHours,
-              focusHoursMonth: userData.focusHoursThisMonth,
-              dayStreak: userData.dayStreak,
-              rankPercentage: userData.rankPercentage,
-            ));
-          } else {
-            // Use cached data if user not found
-            friends.add(friendData);
-          }
-        } catch (e) {
-          debugPrint('⚠️ Error fetching stats for friend ${friendData.userId}: $e');
-          // Use cached data if stats fetch fails
+        if (userData != null) {
+          // Update friend with live statistics (including monthly hours)
+          friends.add(friendData.copyWith(
+            fullName: userData.fullName,
+            avatarUrl: userData.avatarUrl,
+            focusHours: userData.focusHours,
+            focusHoursMonth: userData.focusHoursThisMonth,
+            dayStreak: userData.dayStreak,
+            rankPercentage: userData.rankPercentage,
+          ));
+        } else {
+          // Use cached data if user not found
           friends.add(friendData);
         }
       }
@@ -283,6 +442,66 @@ class FriendsService {
       debugPrint('❌ Error loading friends: $e');
       debugPrint('$st');
       return [];
+    }
+  }
+
+  /// Batch fetch user data to avoid N+1 queries
+  ///
+  /// This method efficiently fetches multiple user documents from Firestore
+  /// using the `whereIn` operator, which allows querying up to 10 documents
+  /// per query. For larger lists, it automatically splits the requests into
+  /// batches to stay within Firestore's limits.
+  ///
+  /// **Performance Impact:**
+  /// - For 20 users: 2 queries instead of 20 individual queries
+  /// - For 50 users: 5 queries instead of 50 individual queries
+  ///
+  /// **Parameters:**
+  /// - [userIds]: List of user IDs to fetch
+  ///
+  /// **Returns:**
+  /// - Map of userId to UserData objects
+  /// - Empty map if [userIds] is empty or on error
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final userIds = ['uid1', 'uid2', 'uid3'];
+  /// final userDataMap = await _batchGetUsers(userIds);
+  /// final user1 = userDataMap['uid1'];
+  /// ```
+  Future<Map<String, UserData>> _batchGetUsers(List<String> userIds) async {
+    if (userIds.isEmpty) return {};
+
+    try {
+      debugPrint('📦 Batch fetching ${userIds.length} users');
+
+      final userDataMap = <String, UserData>{};
+
+      // Firestore 'whereIn' supports up to a limited number of items per query
+      // Split into batches
+      for (int i = 0; i < userIds.length; i += FriendsServiceConstants.firestoreBatchSize) {
+        final batchIds = userIds.skip(i).take(FriendsServiceConstants.firestoreBatchSize).toList();
+
+        // Use whereIn query to fetch multiple documents in one query
+        final querySnapshot = await _firestore
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: batchIds)
+            .get();
+
+        for (final doc in querySnapshot.docs) {
+          if (doc.exists) {
+            final userData = UserData.fromJson(doc.data());
+            userDataMap[doc.id] = userData;
+          }
+        }
+      }
+
+      debugPrint('✅ Batch fetched ${userDataMap.length} users');
+      return userDataMap;
+    } catch (e, st) {
+      debugPrint('❌ Error batch fetching users: $e');
+      debugPrint('$st');
+      return {};
     }
   }
 
@@ -354,6 +573,16 @@ class FriendsService {
 
   /// Update friend's stats (called when user's stats change)
   /// This keeps friend data in sync across all users who have them as a friend
+  /// DEPRECATED: This function is obsolete and should not be used
+  ///
+  /// Previously attempted to update cached friend stats across all users,
+  /// but this approach doesn't scale (queries ALL users in database).
+  ///
+  /// Friend stats are now fetched live using batch queries in getFriends()
+  /// which is much more efficient and always returns current data.
+  ///
+  /// This function is kept for reference but should be removed in future cleanup.
+  @Deprecated('Use live data fetching in getFriends() instead')
   Future<void> updateFriendStats(
     String userId,
     String fullName,
@@ -362,41 +591,9 @@ class FriendsService {
     int dayStreak,
     String? rankPercentage,
   ) async {
-    try {
-      debugPrint('🔄 Updating friend stats for user: $userId');
-
-      // Get all users who have this user as a friend
-      final usersSnapshot = await _firestore.collection('users').get();
-
-      for (final userDoc in usersSnapshot.docs) {
-        final friendDoc = await _firestore
-            .collection('users')
-            .doc(userDoc.id)
-            .collection('friends')
-            .doc(userId)
-            .get();
-
-        if (friendDoc.exists) {
-          // Update this friend's data in their collection
-          await _firestore
-              .collection('users')
-              .doc(userDoc.id)
-              .collection('friends')
-              .doc(userId)
-              .update({
-            'fullName': fullName,
-            'avatarUrl': avatarUrl,
-            'focusHours': focusHours,
-            'dayStreak': dayStreak,
-            'rankPercentage': rankPercentage,
-          });
-        }
-      }
-
-      debugPrint('✅ Friend stats updated');
-    } catch (e, st) {
-      debugPrint('❌ Error updating friend stats: $e');
-      debugPrint('$st');
-    }
+    // This function is deprecated and intentionally does nothing
+    // to prevent accidental use of the inefficient implementation
+    debugPrint('⚠️ updateFriendStats is deprecated - stats are now fetched live');
+    return;
   }
 }

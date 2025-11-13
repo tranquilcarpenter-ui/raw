@@ -6,8 +6,20 @@ import 'user_data.dart';
 import 'user_data_service.dart';
 import 'project_service.dart';
 
+/// Constants for signup validation
+class SignupConstants {
+  // Password validation
+  static const int passwordMinLength = 8;
+  static final RegExp uppercasePattern = RegExp(r'[A-Z]');
+  static final RegExp lowercasePattern = RegExp(r'[a-z]');
+  static final RegExp numberPattern = RegExp(r'[0-9]');
+  static final RegExp specialCharPattern = RegExp(r'[!@#$%^&*(),.?":{}|<>]');
+}
+
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+  final String? initialEmail;
+
+  const SignUpScreen({super.key, this.initialEmail});
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
@@ -46,7 +58,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void initState() {
     super.initState();
+    debugPrint('SignUpScreen: ========================================');
+    debugPrint('SignUpScreen: initState called');
+    debugPrint('SignUpScreen: initialEmail = ${widget.initialEmail}');
+
     _emailController.addListener(_validateEmail);
+
+    // Pre-fill email if provided from auth screen
+    if (widget.initialEmail != null) {
+      debugPrint('SignUpScreen: Pre-filling email field with: ${widget.initialEmail}');
+      _emailController.text = widget.initialEmail!;
+    }
+
+    debugPrint('SignUpScreen: initState completed');
+    debugPrint('SignUpScreen: ========================================');
   }
 
   @override
@@ -169,7 +194,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       setState(() {
         _isLoading = false;
         if (e.code == 'weak-password') {
-          _errorMessage = 'Password is too weak (min 6 characters)';
+          _errorMessage = 'Password is too weak. Use at least 6 characters with letters and numbers';
         } else if (e.code == 'email-already-in-use') {
           _errorMessage = 'An account already exists with this email';
         } else if (e.code == 'invalid-email') {
@@ -188,6 +213,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('SignUpScreen: build() called - currentPage = $_currentPage, isLoading = $_isLoading');
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       resizeToAvoidBottomInset: true,
@@ -276,8 +302,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 },
                 physics: const NeverScrollableScrollPhysics(),
                 itemBuilder: (context, index) {
-                  // Use cached pages to avoid rebuilding on every swipe
-                  if (_cachedPages.containsKey(index)) {
+                  // Don't cache pages with interactive state (birthday picker, signature)
+                  final shouldCache = index != 2 && index != 10;
+
+                  // Use cached pages to avoid rebuilding static pages
+                  if (shouldCache && _cachedPages.containsKey(index)) {
                     return _cachedPages[index]!;
                   }
 
@@ -308,15 +337,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       page = Container();
                   }
 
-                  final cachedPage = RepaintBoundary(
+                  final wrappedPage = RepaintBoundary(
                     key: ValueKey(index),
                     child: page,
                   );
 
-                  // Cache the page for future use
-                  _cachedPages[index] = cachedPage;
+                  // Cache the page only if it's static (questions, email, name)
+                  if (shouldCache) {
+                    _cachedPages[index] = wrappedPage;
+                  }
 
-                  return cachedPage;
+                  return wrappedPage;
                 },
               ),
             ),
@@ -456,8 +487,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
-    if (_passwordController.text.length < 6) {
+    // Simple password validation: must contain letters and numbers
+    final password = _passwordController.text;
+
+    if (password.length < 6) {
       setState(() => _errorMessage = 'Password must be at least 6 characters');
+      return;
+    }
+
+    // Check for at least one letter (uppercase or lowercase)
+    final hasLetter = RegExp(r'[a-zA-Z]').hasMatch(password);
+    if (!hasLetter) {
+      setState(() => _errorMessage = 'Password must contain at least one letter');
+      return;
+    }
+
+    // Check for at least one number
+    if (!password.contains(SignupConstants.numberPattern)) {
+      setState(() => _errorMessage = 'Password must contain at least one number');
       return;
     }
 
@@ -466,7 +513,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
-    if (_passwordController.text != _confirmPasswordController.text) {
+    if (password != _confirmPasswordController.text) {
       setState(() => _errorMessage = 'Passwords do not match');
       return;
     }

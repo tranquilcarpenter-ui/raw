@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'firebase_service.dart';
 import 'auth_provider.dart';
 import 'auth_screen.dart';
+import 'splash_screen.dart';
 import 'test_users_screen.dart';
 import 'user_data.dart';
 import 'user_data_service.dart';
@@ -250,6 +251,19 @@ class AppGradients {
   );
 }
 
+// Image Cache Configuration
+class ImageCacheConfig {
+  // Cache size multipliers (relative to display dimensions)
+  static const double memoryCacheMultiplier = 2.0; // 2x display size for memory
+  static const double diskCacheMultiplier = 3.0;    // 3x display size for disk
+
+  // Maximum cache dimension to prevent excessive memory usage
+  static const double maxCacheDimension = 10000.0;
+
+  // Minimum valid dimension
+  static const double minCacheDimension = 0.0;
+}
+
 // ============================================================================
 // END GLOBAL UI CONSTANTS
 // ============================================================================
@@ -266,11 +280,16 @@ Widget buildImageFromPath(
   final isNetworkImage =
       imagePath.startsWith('http://') || imagePath.startsWith('https://');
 
-  // Helper to safely convert dimension to int, returns null if invalid
+  // Helper to safely convert dimension to int with validation
+  // Returns null if invalid to prevent cache size issues
   int? safeDimensionToInt(double? value, double multiplier) {
     if (value == null) return null;
     final result = value * multiplier;
-    if (!result.isFinite || result <= 0 || result > 10000) return null;
+    if (!result.isFinite ||
+        result <= ImageCacheConfig.minCacheDimension ||
+        result > ImageCacheConfig.maxCacheDimension) {
+      return null;
+    }
     return result.round();
   }
 
@@ -298,10 +317,10 @@ Widget buildImageFromPath(
       ),
       errorWidget: (context, url, error) =>
           errorWidget ?? const Icon(Icons.error),
-      memCacheWidth: safeDimensionToInt(width, 2),
-      memCacheHeight: safeDimensionToInt(height, 2),
-      maxWidthDiskCache: safeDimensionToInt(width, 3),
-      maxHeightDiskCache: safeDimensionToInt(height, 3),
+      memCacheWidth: safeDimensionToInt(width, ImageCacheConfig.memoryCacheMultiplier),
+      memCacheHeight: safeDimensionToInt(height, ImageCacheConfig.memoryCacheMultiplier),
+      maxWidthDiskCache: safeDimensionToInt(width, ImageCacheConfig.diskCacheMultiplier),
+      maxHeightDiskCache: safeDimensionToInt(height, ImageCacheConfig.diskCacheMultiplier),
     );
   } else {
     return Image.file(
@@ -310,8 +329,8 @@ Widget buildImageFromPath(
       width: width,
       height: height,
       alignment: alignment,
-      cacheWidth: safeDimensionToInt(width, 2),
-      cacheHeight: safeDimensionToInt(height, 2),
+      cacheWidth: safeDimensionToInt(width, ImageCacheConfig.memoryCacheMultiplier),
+      cacheHeight: safeDimensionToInt(height, ImageCacheConfig.memoryCacheMultiplier),
       errorBuilder: errorWidget != null
           ? (context, error, stackTrace) => errorWidget
           : null,
@@ -373,41 +392,144 @@ void main() async {
   // Flutter automatically adapts to device refresh rate on supporting devices
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase via the centralized singleton service.
-  // This ensures a single initialization path and avoids race conditions
-  // that can occur when multiple parts of the app access Firebase directly
-  // during startup or when using the VS Code debugger.
-  await FirebaseService.instance.initialize();
-
-  // Emulator configuration is handled centrally inside `FirebaseService`
-  // (it will configure Storage, Firestore and Auth emulators in debug builds).
-
-  runApp(const FocusFlowApp());
+  // Show splash screen while initializing
+  runApp(const RAWAppWrapper());
 }
 
-class FocusFlowApp extends StatefulWidget {
-  const FocusFlowApp({super.key});
+class RAWAppWrapper extends StatefulWidget {
+  const RAWAppWrapper({super.key});
 
   @override
-  State<FocusFlowApp> createState() => _FocusFlowAppState();
+  State<RAWAppWrapper> createState() => _RAWAppWrapperState();
 }
 
-class _FocusFlowAppState extends State<FocusFlowApp> {
+class _RAWAppWrapperState extends State<RAWAppWrapper> {
+  bool _isInitialized = false;
+  firebase_auth.User? _initialUser;
+  UserData? _preloadedUserData;
+  String? _preloadedProfileImagePath;
+  String? _preloadedBannerImagePath;
+
+  Future<void> _initialize() async {
+    final startTime = DateTime.now();
+
+    // Initialize Firebase via the centralized singleton service.
+    // This ensures a single initialization path and avoids race conditions
+    // that can occur when multiple parts of the app access Firebase directly
+    // during startup or when using the VS Code debugger.
+    await FirebaseService.instance.initialize();
+
+    // Emulator configuration is handled centrally inside `FirebaseService`
+    // (it will configure Storage, Firestore and Auth emulators in debug builds).
+
+    // Check initial auth state during splash screen
+    // This preloads the auth state so the app can show the correct screen immediately
+    _initialUser = FirebaseService.instance.auth.currentUser;
+
+    // If no current user, wait a bit for auth state to settle
+    if (_initialUser == null) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      _initialUser = FirebaseService.instance.auth.currentUser;
+    }
+
+    // PERFORMANCE OPTIMIZATION: Preload user data during splash screen
+    // This makes the app feel instant when opening - all data is ready
+    if (_initialUser != null) {
+      debugPrint('🚀 Preloading user data during splash screen for ${_initialUser!.uid}');
+
+      // Load user data in parallel with remaining splash time
+      _preloadedUserData = await UserDataService.instance.loadUserData(_initialUser!.uid);
+
+      if (_preloadedUserData != null) {
+        _preloadedProfileImagePath = _preloadedUserData!.avatarUrl;
+        _preloadedBannerImagePath = _preloadedUserData!.bannerImageUrl;
+        debugPrint('✅ Preloaded: ${_preloadedUserData!.fullName}, Streak=${_preloadedUserData!.dayStreak}');
+      } else {
+        debugPrint('⚠️ No user data found, will create default');
+      }
+    }
+
+    // Ensure splash screen shows for minimum 4 seconds for branding
+    final elapsed = DateTime.now().difference(startTime);
+    final remaining = const Duration(seconds: 4) - elapsed;
+
+    if (remaining.inMilliseconds > 0) {
+      await Future.delayed(remaining);
+    }
+
+    // Mark initialization as complete
+    if (mounted) {
+      setState(() {
+        _isInitialized = true;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        primaryColor: const Color(0xFF8B5CF6),
+      ),
+      home: _isInitialized
+          ? RAWApp(
+              preloadedUserData: _preloadedUserData,
+              preloadedProfileImagePath: _preloadedProfileImagePath,
+              preloadedBannerImagePath: _preloadedBannerImagePath,
+            )
+          : SplashScreen(onFinish: _initialize),
+    );
+  }
+}
+
+class RAWApp extends StatefulWidget {
+  final UserData? preloadedUserData;
+  final String? preloadedProfileImagePath;
+  final String? preloadedBannerImagePath;
+
+  const RAWApp({
+    super.key,
+    this.preloadedUserData,
+    this.preloadedProfileImagePath,
+    this.preloadedBannerImagePath,
+  });
+
+  @override
+  State<RAWApp> createState() => _RAWAppState();
+}
+
+class _RAWAppState extends State<RAWApp> {
   late UserData _userData;
   String? _profileImagePath;
   String? _bannerImagePath;
   String? _currentUserId;
+  StreamSubscription<firebase_auth.User?>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
-    _userData = UserData.newUser(email: 'guest@example.com', fullName: 'User');
+
+    // Use preloaded data from splash screen if available
+    if (widget.preloadedUserData != null) {
+      debugPrint('⚡ Using preloaded user data - instant load!');
+      _userData = widget.preloadedUserData!;
+      _profileImagePath = widget.preloadedProfileImagePath;
+      _bannerImagePath = widget.preloadedBannerImagePath;
+      _currentUserId = FirebaseService.instance.auth.currentUser?.uid;
+    } else {
+      _userData = UserData.newUser(email: 'guest@example.com', fullName: 'User');
+    }
+
     _listenToAuthChanges();
   }
 
   void _listenToAuthChanges() {
     // Listen for authentication state changes
-    FirebaseService.instance.auth.authStateChanges().listen((user) async {
+    _authSubscription = FirebaseService.instance.auth.authStateChanges().listen((
+      user,
+    ) async {
       if (user != null && user.uid != _currentUserId) {
         // User logged in or changed - load their data
         debugPrint('👤 User logged in: ${user.uid}');
@@ -438,46 +560,60 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
               newUserData,
               merge: false,
             );
-            setState(() {
-              _userData = newUserData;
-            });
+            if (mounted) {
+              setState(() {
+                _userData = newUserData;
+              });
+            }
           } else {
             debugPrint(
               '📊 Loaded data on retry: ${retryUserData.fullName}, Streak=${retryUserData.dayStreak}',
             );
-            setState(() {
-              _userData = retryUserData;
-              _profileImagePath = retryUserData.avatarUrl;
-              _bannerImagePath = retryUserData.bannerImageUrl;
-            });
+            if (mounted) {
+              setState(() {
+                _userData = retryUserData;
+                _profileImagePath = retryUserData.avatarUrl;
+                _bannerImagePath = retryUserData.bannerImageUrl;
+              });
+            }
           }
         } else {
           debugPrint(
             '📊 Loaded data: ${userData.fullName}, Streak=${userData.dayStreak}, Hours=${userData.focusHours}',
           );
-          setState(() {
-            _userData = userData;
-            // Load profile and banner images from UserData
-            // IMPORTANT: Set to null if user doesn't have images, to clear previous user's images
-            _profileImagePath = userData.avatarUrl;
-            _bannerImagePath = userData.bannerImageUrl;
-          });
+          if (mounted) {
+            setState(() {
+              _userData = userData;
+              // Load profile and banner images from UserData
+              // IMPORTANT: Set to null if user doesn't have images, to clear previous user's images
+              _profileImagePath = userData.avatarUrl;
+              _bannerImagePath = userData.bannerImageUrl;
+            });
+          }
         }
       } else if (user == null) {
         // User logged out - reset to default data
         debugPrint('👋 User logged out');
         _currentUserId = null;
-        setState(() {
-          _userData = UserData.newUser(
-            email: 'guest@example.com',
-            fullName: 'User',
-          );
-          // Clear profile and banner images
-          _profileImagePath = null;
-          _bannerImagePath = null;
-        });
+        if (mounted) {
+          setState(() {
+            _userData = UserData.newUser(
+              email: 'guest@example.com',
+              fullName: 'User',
+            );
+            // Clear profile and banner images
+            _profileImagePath = null;
+            _bannerImagePath = null;
+          });
+        }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
   }
 
   void _updateUserData(UserData newUserData) async {
@@ -536,34 +672,12 @@ class _FocusFlowAppState extends State<FocusFlowApp> {
               builder: (context) {
                 final authProvider = AuthProvider.of(context);
 
-                // Show loading screen while checking auth state
-                if (authProvider?.isLoading ?? true) {
-                  return const Scaffold(
-                    backgroundColor: Color(0xFF000000),
-                    body: Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    ),
-                  );
-                }
-
                 // Show auth screen if not logged in
                 if (authProvider?.user == null) {
                   return const AuthScreen();
                 }
 
-                // Check if user data has been loaded
-                final userDataProvider = UserDataProvider.of(context);
-                if (userDataProvider?.userData == null) {
-                  // User is authenticated but data hasn't loaded yet
-                  return const Scaffold(
-                    backgroundColor: Color(0xFF000000),
-                    body: Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    ),
-                  );
-                }
-
-                // User is logged in and data is loaded - show main app
+                // User is logged in - show main app
                 return const MainScreen();
               },
             ),
@@ -911,7 +1025,10 @@ class _FocusScreenState extends State<FocusScreen>
   void _updateWeekDays() {
     final now = DateTime.now();
     final weekStart = now.subtract(Duration(days: now.weekday - 1));
-    _weekDays = List.generate(7, (index) => weekStart.add(Duration(days: index)));
+    _weekDays = List.generate(
+      7,
+      (index) => weekStart.add(Duration(days: index)),
+    );
   }
 
   @override
@@ -1974,39 +2091,41 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     });
 
                     // Debounce search by 500ms to avoid excessive Firestore queries
-                    searchDebounce = Timer(const Duration(milliseconds: 500), () async {
-                      // Search by name or ID
-                      Map<String, UserData> results;
-                      if (query.trim().length < 20) {
-                        // Search by name
-                        results = await FriendsService.instance.searchUsersByName(
-                          query.trim(),
+                    searchDebounce = Timer(
+                      const Duration(milliseconds: 500),
+                      () async {
+                        // Search by name or ID
+                        Map<String, UserData> results;
+                        if (query.trim().length < 20) {
+                          // Search by name
+                          results = await FriendsService.instance
+                              .searchUsersByName(query.trim());
+                        } else {
+                          // Search by ID (if query looks like a user ID)
+                          final userById = await FriendsService.instance
+                              .getUserById(query.trim());
+                          results = userById != null
+                              ? {query.trim(): userById}
+                              : {};
+                        }
+
+                        // Filter out the current user from search results
+                        results.remove(user.uid);
+
+                        // Also filter out users who are already friends or have pending requests
+                        final existingUserIds = await FriendsService.instance
+                            .getExistingConnectionIds(user.uid);
+
+                        results.removeWhere(
+                          (userId, _) => existingUserIds.contains(userId),
                         );
-                      } else {
-                        // Search by ID (if query looks like a user ID)
-                        final userById = await FriendsService.instance
-                            .getUserById(query.trim());
-                        results = userById != null
-                            ? {query.trim(): userById}
-                            : {};
-                      }
 
-                      // Filter out the current user from search results
-                      results.remove(user.uid);
-
-                      // Also filter out users who are already friends or have pending requests
-                      final existingUserIds = await FriendsService.instance
-                          .getExistingConnectionIds(user.uid);
-
-                      results.removeWhere(
-                        (userId, _) => existingUserIds.contains(userId),
-                      );
-
-                      setDialogState(() {
-                        searchResults = results;
-                        isSearching = false;
-                      });
-                    });
+                        setDialogState(() {
+                          searchResults = results;
+                          isSearching = false;
+                        });
+                      },
+                    );
                   },
                 ),
                 const SizedBox(height: 16),
@@ -2062,7 +2181,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             style: const TextStyle(color: Colors.white),
                           ),
                           subtitle: Text(
-                            userData.email,
+                            // Display username instead of email for privacy
+                            userData.username != null &&
+                                    userData.username!.isNotEmpty
+                                ? '@${userData.username}'
+                                : 'User ID: ${userId.substring(0, 8)}...',
                             style: const TextStyle(
                               color: Color(0xFF8E8E93),
                               fontSize: 12,
@@ -2087,7 +2210,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             );
 
                             // Send friend request
-                            final success = await FriendsService.instance
+                            final result = await FriendsService.instance
                                 .sendFriendRequest(user.uid, userId);
 
                             // Close loading
@@ -2098,17 +2221,18 @@ class _CommunityScreenState extends State<CommunityScreen> {
                               ScaffoldMessenger.of(this.context).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                    success
+                                    result.success
                                         ? 'Friend request sent to ${userData.fullName}!'
-                                        : 'Failed to send friend request',
+                                        : result.errorMessage ??
+                                              'Failed to send friend request',
                                   ),
-                                  backgroundColor: success
+                                  backgroundColor: result.success
                                       ? const Color(0xFF00C853)
                                       : const Color(0xFFDC2626),
                                 ),
                               );
 
-                              if (success) {
+                              if (result.success) {
                                 _loadOutgoingRequests();
                               }
                             }
@@ -2132,6 +2256,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
         ),
       ),
     );
+
+    // Clean up timer and controller when dialog is closed
+    searchDebounce?.cancel();
+    searchController.dispose();
   }
 
   Widget _buildFilterButton(String text, int index) {
@@ -4035,7 +4163,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<Achievement> _achievements = [];
   bool _isLoadingAchievements = true;
   UserData? _lastUserData; // Track last userData to avoid redundant loads
-  Future<Map<String, String>>? _projectNamesFuture; // Cached future for project names
+  Future<Map<String, String>>?
+  _projectNamesFuture; // Cached future for project names
 
   // Cache for activity graph data to avoid expensive recomputation
   final Map<String, List<double>> _activityDataCache = {};
@@ -4984,9 +5113,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const SettingsScreen(
-                                  showBackButton: true,
-                                ),
+                                builder: (context) =>
+                                    const SettingsScreen(showBackButton: true),
                               ),
                             );
                           },
@@ -5347,99 +5475,99 @@ class _ProfileScreenState extends State<ProfileScreen> {
       periodData = [];
       labels = [];
 
-    if (_selectedPeriod == 0) {
-      // Week: Show current week (Monday-Sunday)
-      final weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      if (_selectedPeriod == 0) {
+        // Week: Show current week (Monday-Sunday)
+        final weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-      // Calculate the start of the week (Monday)
-      final currentWeekday = now.weekday; // 1=Monday, 7=Sunday
-      final mondayOffset = currentWeekday - 1; // Days since Monday
-      final monday = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ).subtract(Duration(days: mondayOffset + (_currentOffset * 7)));
-
-      // Get data for Monday through Sunday
-      for (int i = 0; i < 7; i++) {
-        final date = monday.add(Duration(days: i));
-        final hours = userData.dailyActivityData[date] ?? 0.0;
-        periodData.add(hours);
-        labels.add(weekDays[i]);
-      }
-    } else if (_selectedPeriod == 1) {
-      // Month view
-      for (int i = _daysInPeriod - 1; i >= 0; i--) {
-        final date = DateTime(
+        // Calculate the start of the week (Monday)
+        final currentWeekday = now.weekday; // 1=Monday, 7=Sunday
+        final mondayOffset = currentWeekday - 1; // Days since Monday
+        final monday = DateTime(
           now.year,
           now.month,
           now.day,
-        ).subtract(Duration(days: daysBack + i));
-        final hours = userData.dailyActivityData[date] ?? 0.0;
-        periodData.add(hours);
-      }
-      // Month: Show every 5th day or fewer labels
-      final step = _daysInPeriod > 15 ? 5 : 3;
-      for (int i = 0; i < _daysInPeriod; i++) {
-        if (i % step == 0 || i == _daysInPeriod - 1) {
-          final date = now.subtract(
-            Duration(days: daysBack + _daysInPeriod - 1 - i),
-          );
-          labels.add('${date.day}');
-        } else {
-          labels.add('');
+        ).subtract(Duration(days: mondayOffset + (_currentOffset * 7)));
+
+        // Get data for Monday through Sunday
+        for (int i = 0; i < 7; i++) {
+          final date = monday.add(Duration(days: i));
+          final hours = userData.dailyActivityData[date] ?? 0.0;
+          periodData.add(hours);
+          labels.add(weekDays[i]);
         }
-      }
-    } else {
-      // Year: Show month labels and aggregate data by month
-      final months = [
-        'J',
-        'F',
-        'M',
-        'A',
-        'M',
-        'J',
-        'J',
-        'A',
-        'S',
-        'O',
-        'N',
-        'D',
-      ];
-
-      // Calculate which year we're looking at
-      // For current offset (0), use current year
-      // For past offsets, subtract years
-      final targetYear = now.year - _currentOffset;
-
-      // Create labels for all 12 months
-      for (int i = 0; i < 12; i++) {
-        labels.add(months[i]);
-      }
-
-      // Group data by month for year view
-      List<double> monthlyData = [];
-      for (int month = 1; month <= 12; month++) {
-        double monthTotal = 0;
-
-        // Get all days in this specific month of the target year
-        final daysInThisMonth = DateTime(targetYear, month + 1, 0).day;
-
-        for (int day = 1; day <= daysInThisMonth; day++) {
-          final date = DateTime(targetYear, month, day);
-
-          // Only include if the date is not in the future
-          if (date.isBefore(now) ||
-              date.isAtSameMomentAs(DateTime(now.year, now.month, now.day))) {
-            monthTotal += userData.dailyActivityData[date] ?? 0.0;
+      } else if (_selectedPeriod == 1) {
+        // Month view
+        for (int i = _daysInPeriod - 1; i >= 0; i--) {
+          final date = DateTime(
+            now.year,
+            now.month,
+            now.day,
+          ).subtract(Duration(days: daysBack + i));
+          final hours = userData.dailyActivityData[date] ?? 0.0;
+          periodData.add(hours);
+        }
+        // Month: Show every 5th day or fewer labels
+        final step = _daysInPeriod > 15 ? 5 : 3;
+        for (int i = 0; i < _daysInPeriod; i++) {
+          if (i % step == 0 || i == _daysInPeriod - 1) {
+            final date = now.subtract(
+              Duration(days: daysBack + _daysInPeriod - 1 - i),
+            );
+            labels.add('${date.day}');
+          } else {
+            labels.add('');
           }
         }
+      } else {
+        // Year: Show month labels and aggregate data by month
+        final months = [
+          'J',
+          'F',
+          'M',
+          'A',
+          'M',
+          'J',
+          'J',
+          'A',
+          'S',
+          'O',
+          'N',
+          'D',
+        ];
 
-        // Add total focused hours for the month
-        monthlyData.add(monthTotal);
+        // Calculate which year we're looking at
+        // For current offset (0), use current year
+        // For past offsets, subtract years
+        final targetYear = now.year - _currentOffset;
+
+        // Create labels for all 12 months
+        for (int i = 0; i < 12; i++) {
+          labels.add(months[i]);
+        }
+
+        // Group data by month for year view
+        List<double> monthlyData = [];
+        for (int month = 1; month <= 12; month++) {
+          double monthTotal = 0;
+
+          // Get all days in this specific month of the target year
+          final daysInThisMonth = DateTime(targetYear, month + 1, 0).day;
+
+          for (int day = 1; day <= daysInThisMonth; day++) {
+            final date = DateTime(targetYear, month, day);
+
+            // Only include if the date is not in the future
+            if (date.isBefore(now) ||
+                date.isAtSameMomentAs(DateTime(now.year, now.month, now.day))) {
+              monthTotal += userData.dailyActivityData[date] ?? 0.0;
+            }
+          }
+
+          // Add total focused hours for the month
+          monthlyData.add(monthTotal);
+        }
+        periodData = monthlyData;
       }
-      periodData = monthlyData;
-    }
 
       // Cache the computed data
       _activityDataCache[cacheKey] = periodData;
@@ -5964,7 +6092,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final currentSessionsHash = userData.focusSessions.hashCode;
     List<MapEntry<String, double>> sortedEntries;
 
-    if (_cachedProjectData != null && _lastSessionsHash == currentSessionsHash) {
+    if (_cachedProjectData != null &&
+        _lastSessionsHash == currentSessionsHash) {
       // Use cached data
       sortedEntries = _cachedProjectData!;
     } else {
@@ -5974,7 +6103,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       for (final session in userData.focusSessions) {
         final projectId = session.projectId;
         final minutes = session.duration.inMinutes.toDouble();
-        projectMinutes[projectId] = (projectMinutes[projectId] ?? 0.0) + minutes;
+        projectMinutes[projectId] =
+            (projectMinutes[projectId] ?? 0.0) + minutes;
       }
 
       // Convert to hours and sort by value
