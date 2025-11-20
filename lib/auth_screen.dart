@@ -28,9 +28,9 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _handleContinue() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your email')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter your email')));
       return;
     }
 
@@ -53,7 +53,9 @@ class _AuthScreenState extends State<AuthScreen> {
       debugPrint('AuthScreen: ========================================');
       debugPrint('AuthScreen: Starting email existence check');
       debugPrint('AuthScreen: Email to check: $email');
-      debugPrint('AuthScreen: Firestore settings: ${FirebaseFirestore.instance.settings}');
+      debugPrint(
+        'AuthScreen: Firestore settings: ${FirebaseFirestore.instance.settings}',
+      );
 
       final startTime = DateTime.now();
       debugPrint('AuthScreen: Creating Firestore query...');
@@ -67,7 +69,9 @@ class _AuthScreenState extends State<AuthScreen> {
             const Duration(seconds: 10),
             onTimeout: () {
               final elapsed = DateTime.now().difference(startTime).inSeconds;
-              debugPrint('AuthScreen: ❌ Query TIMED OUT after $elapsed seconds');
+              debugPrint(
+                'AuthScreen: ❌ Query TIMED OUT after $elapsed seconds',
+              );
               throw Exception('Query timed out - please check your connection');
             },
           );
@@ -100,9 +104,10 @@ class _AuthScreenState extends State<AuthScreen> {
                 const LoginScreen(),
             transitionDuration: const Duration(milliseconds: 150),
             reverseTransitionDuration: const Duration(milliseconds: 150),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
           ),
         );
         debugPrint('AuthScreen: Navigation to LoginScreen initiated');
@@ -118,9 +123,10 @@ class _AuthScreenState extends State<AuthScreen> {
             },
             transitionDuration: const Duration(milliseconds: 150),
             reverseTransitionDuration: const Duration(milliseconds: 150),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
           ),
         );
         debugPrint('AuthScreen: Navigator.push() completed');
@@ -199,202 +205,205 @@ class _AuthScreenState extends State<AuthScreen> {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 40,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(height: 20),
-
-                    // RAW Logo
-                    Image.asset(
-                      'assets/images/RAW/ios_dark_icon.png',
-                      height: 100,
-                      width: 100,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 40,
                     ),
-
-                    const SizedBox(height: 24),
-
-                    // Title
-                    const Text(
-                      'Log in or sign up',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Email input
-                    TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Email',
-                        hintStyle: const TextStyle(color: Color(0xFF8E8E93)),
-                        filled: true,
-                        fillColor: const Color(0xFF1C1C1E),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    // Continue button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: _handleContinue,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: const Text(
-                          'Continue',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Or divider
-                    const Row(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(child: Divider(color: Color(0xFF2F2F2F))),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(
-                            'or',
-                            style: TextStyle(
+                        const SizedBox(height: 20),
+
+                        // RAW Logo
+                        Image.asset(
+                          'assets/images/RAW/ios_dark_icon.png',
+                          height: 100,
+                          width: 100,
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Title
+                        const Text(
+                          'Welcome to RAW',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Email input
+                        TextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Email',
+                            hintStyle: const TextStyle(
                               color: Color(0xFF8E8E93),
-                              fontSize: 13,
+                            ),
+                            filled: true,
+                            fillColor: const Color(0xFF1C1C1E),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
                             ),
                           ),
                         ),
-                        Expanded(child: Divider(color: Color(0xFF2F2F2F))),
+
+                        const SizedBox(height: 12),
+
+                        // Continue button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton(
+                            onPressed: _handleContinue,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: const Text(
+                              'Continue',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Or divider
+                        const Row(
+                          children: [
+                            Expanded(child: Divider(color: Color(0xFF2F2F2F))),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text(
+                                'or',
+                                style: TextStyle(
+                                  color: Color(0xFF8E8E93),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            Expanded(child: Divider(color: Color(0xFF2F2F2F))),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Social login buttons
+                        _buildSocialButton(
+                          text: 'Continue with Google',
+                          icon: FontAwesomeIcons.google,
+                          iconColor: const Color(0xFF4285F4), // Google Blue
+                          onPressed: () {
+                            // TODO: Implement Google Sign-In
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Google Sign-In coming soon'),
+                              ),
+                            );
+                          },
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        _buildSocialButton(
+                          text: 'Continue with Apple',
+                          icon: FontAwesomeIcons.apple,
+                          onPressed: () {
+                            // TODO: Implement Apple Sign-In
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Apple Sign-In coming soon'),
+                              ),
+                            );
+                          },
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Terms and Privacy Policy
+                        RichText(
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            style: const TextStyle(
+                              color: Color(0xFF8E8E93),
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                            children: [
+                              const TextSpan(
+                                text: 'By continuing, you agree to our\n',
+                              ),
+                              TextSpan(
+                                text: 'Terms',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const TermsScreen(),
+                                      ),
+                                    );
+                                  },
+                              ),
+                              const TextSpan(text: ' and '),
+                              TextSpan(
+                                text: 'Privacy Policy',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const PrivacyPolicyScreen(),
+                                      ),
+                                    );
+                                  },
+                              ),
+                              const TextSpan(text: '.'),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
-
-                    const SizedBox(height: 16),
-
-                    // Social login buttons
-                    _buildSocialButton(
-                      text: 'Continue with Google',
-                      icon: FontAwesomeIcons.google,
-                      iconColor: const Color(0xFF4285F4), // Google Blue
-                      onPressed: () {
-                        // TODO: Implement Google Sign-In
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Google Sign-In coming soon'),
-                          ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    _buildSocialButton(
-                      text: 'Continue with Apple',
-                      icon: FontAwesomeIcons.apple,
-                      onPressed: () {
-                        // TODO: Implement Apple Sign-In
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Apple Sign-In coming soon'),
-                          ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Terms and Privacy Policy
-                    RichText(
-                      textAlign: TextAlign.center,
-                      text: TextSpan(
-                        style: const TextStyle(
-                          color: Color(0xFF8E8E93),
-                          fontSize: 12,
-                          height: 1.4,
-                        ),
-                        children: [
-                          const TextSpan(
-                            text: 'By continuing, you agree to our\n',
-                          ),
-                          TextSpan(
-                            text: 'Terms',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            recognizer: TapGestureRecognizer()
-                              ..onTap = () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const TermsScreen(),
-                                  ),
-                                );
-                              },
-                          ),
-                          const TextSpan(text: ' and '),
-                          TextSpan(
-                            text: 'Privacy Policy',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            recognizer: TapGestureRecognizer()
-                              ..onTap = () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        const PrivacyPolicyScreen(),
-                                  ),
-                                );
-                              },
-                          ),
-                          const TextSpan(text: '.'),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-          ),
           // Loading overlay
           if (_isLoading)
             Container(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withValues(alpha: 0.5),
               child: const Center(
                 child: CircularProgressIndicator(color: Colors.white),
               ),

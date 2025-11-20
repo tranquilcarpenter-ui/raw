@@ -19,7 +19,8 @@ import 'groups_service.dart';
 import 'project.dart';
 import 'project_service.dart';
 import 'project_selector_popup.dart';
-import 'user_profile_screen.dart';
+import 'public_profile_screen.dart';
+import 'onboarding_screen.dart';
 import 'notification_service.dart';
 import 'notification.dart';
 import 'achievement.dart';
@@ -45,7 +46,6 @@ import 'package:share_plus/share_plus.dart';
 class AppColors {
   // Primary purple theme
   static const Color primary = Color(0xFF8B5CF6);
-  static const Color primaryDark = Color(0xFF7C3AED);
   static const Color primaryLight = Color(0xFFB794F6);
 
   // Backgrounds
@@ -67,195 +67,32 @@ class AppColors {
   // Status colors
   static const Color success = Color(0xFF30D158);
   static const Color error = Color(0xFFFF3B30);
-  static const Color warning = Color(0xFFFF9500);
-  static const Color info = Color(0xFF06B6D4);
 
   // Accent colors
   static const Color gold = Color(0xFFFFD700);
-  static const Color blue = Color(0xFF4A90E2);
-  static const Color green = Color(0xFF50C878);
 
   // Dividers and borders
   static const Color divider = Color(0xFF38383A);
-  static const Color border = Color(0xFF48484A);
-}
-
-// Text Styles
-class AppTextStyles {
-  // Headers
-  static const TextStyle h1 = TextStyle(
-    color: AppColors.textPrimary,
-    fontSize: 32,
-    fontFamily: 'Inter',
-    fontWeight: FontWeight.w700,
-  );
-
-  static const TextStyle h2 = TextStyle(
-    color: AppColors.textPrimary,
-    fontSize: 28,
-    fontFamily: 'Inter',
-    fontWeight: FontWeight.w700,
-  );
-
-  static const TextStyle h3 = TextStyle(
-    color: AppColors.textPrimary,
-    fontSize: 24,
-    fontFamily: 'Inter',
-    fontWeight: FontWeight.w600,
-  );
-
-  static const TextStyle h4 = TextStyle(
-    color: AppColors.textPrimary,
-    fontSize: 20,
-    fontFamily: 'Inter',
-    fontWeight: FontWeight.w600,
-  );
-
-  // Body text
-  static const TextStyle bodyLarge = TextStyle(
-    color: AppColors.textPrimary,
-    fontSize: 18,
-    fontFamily: 'Inter',
-    fontWeight: FontWeight.w400,
-  );
-
-  static const TextStyle bodyMedium = TextStyle(
-    color: AppColors.textPrimary,
-    fontSize: 16,
-    fontFamily: 'Inter',
-    fontWeight: FontWeight.w400,
-  );
-
-  static const TextStyle bodySmall = TextStyle(
-    color: AppColors.textPrimary,
-    fontSize: 14,
-    fontFamily: 'Inter',
-    fontWeight: FontWeight.w400,
-  );
-
-  // Labels
-  static const TextStyle label = TextStyle(
-    color: AppColors.textSecondary,
-    fontSize: 13,
-    fontFamily: 'Inter',
-    fontWeight: FontWeight.w600,
-    letterSpacing: 0.5,
-  );
-
-  static const TextStyle caption = TextStyle(
-    color: AppColors.textSecondary,
-    fontSize: 12,
-    fontFamily: 'Inter',
-    fontWeight: FontWeight.w400,
-  );
-
-  // Button text
-  static const TextStyle button = TextStyle(
-    color: AppColors.textPrimary,
-    fontSize: 16,
-    fontFamily: 'Inter',
-    fontWeight: FontWeight.w600,
-  );
 }
 
 // Spacing
 class AppSpacing {
-  static const double xs = 4.0;
-  static const double sm = 8.0;
-  static const double md = 12.0;
   static const double lg = 16.0;
-  static const double xl = 24.0;
-  static const double xxl = 32.0;
-  static const double xxxl = 48.0;
 }
 
 // Border Radius
 class AppRadius {
-  static const double sm = 8.0;
   static const double md = 12.0;
-  static const double lg = 16.0;
-  static const double xl = 20.0;
-  static const double xxl = 24.0;
-  static const double round = 100.0;
 
   // Common border radius objects
-  static BorderRadius small = BorderRadius.circular(sm);
   static BorderRadius medium = BorderRadius.circular(md);
-  static BorderRadius large = BorderRadius.circular(lg);
-  static BorderRadius extraLarge = BorderRadius.circular(xl);
-  static BorderRadius extraExtraLarge = BorderRadius.circular(xxl);
-  static BorderRadius circular = BorderRadius.circular(round);
-}
-
-// Shadows
-class AppShadows {
-  static List<BoxShadow> small = [
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.1),
-      blurRadius: 4,
-      offset: const Offset(0, 2),
-    ),
-  ];
-
-  static List<BoxShadow> medium = [
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.15),
-      blurRadius: 8,
-      offset: const Offset(0, 4),
-    ),
-  ];
-
-  static List<BoxShadow> large = [
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.2),
-      blurRadius: 16,
-      offset: const Offset(0, 8),
-    ),
-  ];
-
-  static List<BoxShadow> primaryGlow = [
-    BoxShadow(
-      color: AppColors.primary.withValues(alpha: 0.3),
-      blurRadius: 20,
-      offset: const Offset(0, 10),
-    ),
-  ];
-}
-
-// Animation Durations
-class AppDurations {
-  static const Duration fast = Duration(milliseconds: 200);
-  static const Duration normal = Duration(milliseconds: 300);
-  static const Duration slow = Duration(milliseconds: 500);
-  static const Duration verySlow = Duration(milliseconds: 1000);
-}
-
-// Common Gradients
-class AppGradients {
-  static const LinearGradient primary = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [AppColors.primary, AppColors.primaryDark],
-  );
-
-  static const LinearGradient navBar = LinearGradient(
-    begin: Alignment(0.50, 0.00),
-    end: Alignment(0.50, 1.00),
-    colors: [AppColors.navBarGradientStart, AppColors.navBarGradientEnd],
-  );
-
-  static const LinearGradient background = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [AppColors.backgroundElevated, AppColors.background],
-  );
 }
 
 // Image Cache Configuration
 class ImageCacheConfig {
   // Cache size multipliers (relative to display dimensions)
   static const double memoryCacheMultiplier = 2.0; // 2x display size for memory
-  static const double diskCacheMultiplier = 3.0;    // 3x display size for disk
+  static const double diskCacheMultiplier = 3.0; // 3x display size for disk
 
   // Maximum cache dimension to prevent excessive memory usage
   static const double maxCacheDimension = 10000.0;
@@ -317,10 +154,22 @@ Widget buildImageFromPath(
       ),
       errorWidget: (context, url, error) =>
           errorWidget ?? const Icon(Icons.error),
-      memCacheWidth: safeDimensionToInt(width, ImageCacheConfig.memoryCacheMultiplier),
-      memCacheHeight: safeDimensionToInt(height, ImageCacheConfig.memoryCacheMultiplier),
-      maxWidthDiskCache: safeDimensionToInt(width, ImageCacheConfig.diskCacheMultiplier),
-      maxHeightDiskCache: safeDimensionToInt(height, ImageCacheConfig.diskCacheMultiplier),
+      memCacheWidth: safeDimensionToInt(
+        width,
+        ImageCacheConfig.memoryCacheMultiplier,
+      ),
+      memCacheHeight: safeDimensionToInt(
+        height,
+        ImageCacheConfig.memoryCacheMultiplier,
+      ),
+      maxWidthDiskCache: safeDimensionToInt(
+        width,
+        ImageCacheConfig.diskCacheMultiplier,
+      ),
+      maxHeightDiskCache: safeDimensionToInt(
+        height,
+        ImageCacheConfig.diskCacheMultiplier,
+      ),
     );
   } else {
     return Image.file(
@@ -329,8 +178,14 @@ Widget buildImageFromPath(
       width: width,
       height: height,
       alignment: alignment,
-      cacheWidth: safeDimensionToInt(width, ImageCacheConfig.memoryCacheMultiplier),
-      cacheHeight: safeDimensionToInt(height, ImageCacheConfig.memoryCacheMultiplier),
+      cacheWidth: safeDimensionToInt(
+        width,
+        ImageCacheConfig.memoryCacheMultiplier,
+      ),
+      cacheHeight: safeDimensionToInt(
+        height,
+        ImageCacheConfig.memoryCacheMultiplier,
+      ),
       errorBuilder: errorWidget != null
           ? (context, error, stackTrace) => errorWidget
           : null,
@@ -435,15 +290,21 @@ class _RAWAppWrapperState extends State<RAWAppWrapper> {
     // PERFORMANCE OPTIMIZATION: Preload user data during splash screen
     // This makes the app feel instant when opening - all data is ready
     if (_initialUser != null) {
-      debugPrint('🚀 Preloading user data during splash screen for ${_initialUser!.uid}');
+      debugPrint(
+        '🚀 Preloading user data during splash screen for ${_initialUser!.uid}',
+      );
 
       // Load user data in parallel with remaining splash time
-      _preloadedUserData = await UserDataService.instance.loadUserData(_initialUser!.uid);
+      _preloadedUserData = await UserDataService.instance.loadUserData(
+        _initialUser!.uid,
+      );
 
       if (_preloadedUserData != null) {
         _preloadedProfileImagePath = _preloadedUserData!.avatarUrl;
         _preloadedBannerImagePath = _preloadedUserData!.bannerImageUrl;
-        debugPrint('✅ Preloaded: ${_preloadedUserData!.fullName}, Streak=${_preloadedUserData!.dayStreak}');
+        debugPrint(
+          '✅ Preloaded: ${_preloadedUserData!.fullName}, Streak=${_preloadedUserData!.dayStreak}',
+        );
       } else {
         debugPrint('⚠️ No user data found, will create default');
       }
@@ -465,6 +326,11 @@ class _RAWAppWrapperState extends State<RAWAppWrapper> {
     }
   }
 
+  void _completeOnboarding() {
+    // No longer needed - auth state listener handles the transition
+    // Kept for compatibility with OnboardingScreen
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -473,13 +339,31 @@ class _RAWAppWrapperState extends State<RAWAppWrapper> {
         brightness: Brightness.dark,
         primaryColor: const Color(0xFF8B5CF6),
       ),
-      home: _isInitialized
-          ? RAWApp(
-              preloadedUserData: _preloadedUserData,
-              preloadedProfileImagePath: _preloadedProfileImagePath,
-              preloadedBannerImagePath: _preloadedBannerImagePath,
-            )
-          : SplashScreen(onFinish: _initialize),
+      home: !_isInitialized
+          ? SplashScreen(onFinish: _initialize)
+          : StreamBuilder<firebase_auth.User?>(
+              stream: FirebaseService.instance.auth.authStateChanges(),
+              initialData: _initialUser,
+              builder: (context, snapshot) {
+                debugPrint(
+                  'RAWAppWrapper: Auth state = ${snapshot.data?.uid ?? 'null'}',
+                );
+
+                // If user is logged in, show RAWApp (which will show MainScreen)
+                if (snapshot.hasData && snapshot.data != null) {
+                  debugPrint('RAWAppWrapper: User logged in, showing RAWApp');
+                  return RAWApp(
+                    preloadedUserData: _preloadedUserData,
+                    preloadedProfileImagePath: _preloadedProfileImagePath,
+                    preloadedBannerImagePath: _preloadedBannerImagePath,
+                  );
+                }
+
+                // No user logged in, show OnboardingScreen
+                debugPrint('RAWAppWrapper: No user, showing OnboardingScreen');
+                return OnboardingScreen(onComplete: _completeOnboarding);
+              },
+            ),
     );
   }
 }
@@ -519,7 +403,10 @@ class _RAWAppState extends State<RAWApp> {
       _bannerImagePath = widget.preloadedBannerImagePath;
       _currentUserId = FirebaseService.instance.auth.currentUser?.uid;
     } else {
-      _userData = UserData.newUser(email: 'guest@example.com', fullName: 'User');
+      _userData = UserData.newUser(
+        email: 'guest@example.com',
+        fullName: 'User',
+      );
     }
 
     _listenToAuthChanges();
@@ -660,27 +547,24 @@ class _RAWAppState extends State<RAWApp> {
         child: UserDataProvider(
           userData: _userData,
           updateUserData: _updateUserData,
-          child: MaterialApp(
-            title: 'RAW',
-            debugShowCheckedModeBanner: false,
-            theme: ThemeData(
-              scaffoldBackgroundColor: const Color(0xFF000000),
-              primaryColor: const Color(0xFFFFFFFF),
-              fontFamily: 'Inter',
-            ),
-            home: Builder(
-              builder: (context) {
-                final authProvider = AuthProvider.of(context);
+          child: StreamBuilder<firebase_auth.User?>(
+            stream: FirebaseService.instance.auth.authStateChanges(),
+            initialData: FirebaseService.instance.auth.currentUser,
+            builder: (context, snapshot) {
+              debugPrint(
+                'RAWApp: Auth state = ${snapshot.data?.uid ?? 'null'}',
+              );
 
-                // Show auth screen if not logged in
-                if (authProvider?.user == null) {
-                  return const AuthScreen();
-                }
-
-                // User is logged in - show main app
+              // Show appropriate screen based on auth state
+              // Don't wrap in MaterialApp - use the outer one from RAWAppWrapper
+              if (snapshot.hasData && snapshot.data != null) {
+                debugPrint('RAWApp: User logged in, showing MainScreen');
                 return const MainScreen();
-              },
-            ),
+              } else {
+                debugPrint('RAWApp: No user, showing AuthScreen');
+                return const AuthScreen();
+              }
+            },
           ),
         ),
       ),
@@ -830,6 +714,7 @@ class _MainScreenState extends State<MainScreen>
           _currentIndex = index;
         });
       },
+      behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
         child: SvgPicture.asset(
@@ -854,7 +739,7 @@ class _MainScreenState extends State<MainScreen>
           onScrollDirectionChanged: _onScrollDirectionChanged,
         );
       case 2:
-        return ProfileScreen(
+        return PrivateProfileScreen(
           onScrollDirectionChanged: _onScrollDirectionChanged,
         );
       default:
@@ -924,45 +809,61 @@ class _MainScreenState extends State<MainScreen>
                         ),
                       ),
                     ),
-                    // Navigation bar
-                    Container(
-                      width: double.infinity,
-                      height: 80,
-                      decoration: const ShapeDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment(0.50, 0.00),
-                          end: Alignment(0.50, 1.00),
-                          colors: [Color(0xFF1A1A1A), Color(0xFF121212)],
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(27),
-                            topRight: Radius.circular(27),
-                          ),
-                        ),
+                    // Navigation bar with glassmorphism
+                    ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(27),
+                        topRight: Radius.circular(27),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 0, bottom: 12),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            _buildNavItem(
-                              'assets/images/Icons/sandtimericon.svg',
-                              0,
-                              'Focus',
+                      child: BackdropFilter(
+                        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: Container(
+                          width: double.infinity,
+                          height: 80,
+                          decoration: ShapeDecoration(
+                            gradient: LinearGradient(
+                              begin: const Alignment(0.50, 0.00),
+                              end: const Alignment(0.50, 1.00),
+                              colors: [
+                                const Color(0xFF1A1A1A).withValues(alpha: 0.6),
+                                const Color(0xFF121212).withValues(alpha: 0.7),
+                              ],
                             ),
-                            _buildNavItem(
-                              'assets/images/Icons/groupiconlight.svg',
-                              1,
-                              'Community',
+                            shape: const RoundedRectangleBorder(
+                              side: BorderSide(
+                                width: 1,
+                                color: Color.fromARGB(20, 255, 255, 255),
+                              ),
+                              borderRadius: BorderRadius.only(
+                                topLeft: Radius.circular(27),
+                                topRight: Radius.circular(27),
+                              ),
                             ),
-                            _buildNavItem(
-                              'assets/images/Icons/profileicon.svg',
-                              2,
-                              'Profile',
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 0, bottom: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                _buildNavItem(
+                                  'assets/images/Icons/sandtimericon.svg',
+                                  0,
+                                  'Focus',
+                                ),
+                                _buildNavItem(
+                                  'assets/images/Icons/groupiconlight.svg',
+                                  1,
+                                  'Community',
+                                ),
+                                _buildNavItem(
+                                  'assets/images/Icons/profileicon.svg',
+                                  2,
+                                  'Profile',
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -995,6 +896,7 @@ class _FocusScreenState extends State<FocusScreen>
   late AnimationController _pulseController;
   late AnimationController _timerScaleController;
   late Animation<double> _timerScaleAnimation;
+  DateTime? _sessionStartTime; // Track when the current session started
 
   // Project tracking
   String _selectedProjectId = 'unset';
@@ -1002,8 +904,8 @@ class _FocusScreenState extends State<FocusScreen>
   String _selectedProjectName = 'Unset';
   String _selectedProjectEmoji = '📝'; // Default emoji for Unset project
 
-  // Cached week calendar to avoid computing on every build
-  List<DateTime> _weekDays = [];
+  // Calendar expansion
+  bool _isCalendarExpanded = false;
 
   @override
   void initState() {
@@ -1019,16 +921,6 @@ class _FocusScreenState extends State<FocusScreen>
     _timerScaleAnimation = Tween<double>(begin: 1.0, end: 1.5).animate(
       CurvedAnimation(parent: _timerScaleController, curve: Curves.easeInOut),
     );
-    _updateWeekDays();
-  }
-
-  void _updateWeekDays() {
-    final now = DateTime.now();
-    final weekStart = now.subtract(Duration(days: now.weekday - 1));
-    _weekDays = List.generate(
-      7,
-      (index) => weekStart.add(Duration(days: index)),
-    );
   }
 
   @override
@@ -1042,6 +934,7 @@ class _FocusScreenState extends State<FocusScreen>
   void _startTimer() {
     setState(() {
       _isRunning = true;
+      _sessionStartTime = DateTime.now(); // Record when the session started
     });
     _timerScaleController.forward();
     widget.onFocusStateChanged?.call(true);
@@ -1065,6 +958,9 @@ class _FocusScreenState extends State<FocusScreen>
     // Timer completed - save session and check achievements
     final user = firebase_auth.FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
+    // Clear session start time since the session is completing normally
+    _sessionStartTime = null;
 
     try {
       final userDataProvider = UserDataProvider.of(context);
@@ -1115,10 +1011,22 @@ class _FocusScreenState extends State<FocusScreen>
     }
   }
 
-  void _pauseTimer() {
+  void _stopTimer() {
     _timer?.cancel();
+
+    // Calculate and save interrupted time if session was started but not completed
+    if (_sessionStartTime != null) {
+      final elapsedSeconds = _totalSeconds - _remainingSeconds;
+      if (elapsedSeconds > 0) {
+        // Session was interrupted - save the partial time
+        _saveInterruptedSession(elapsedSeconds);
+      }
+    }
+
     setState(() {
       _isRunning = false;
+      _remainingSeconds = _totalSeconds;
+      _sessionStartTime = null; // Clear session start time
     });
     _timerScaleController.reverse();
     widget.onFocusStateChanged?.call(false);
@@ -1127,17 +1035,31 @@ class _FocusScreenState extends State<FocusScreen>
     _updateFocusingStatus(false);
   }
 
-  void _stopTimer() {
-    _timer?.cancel();
-    setState(() {
-      _isRunning = false;
-      _remainingSeconds = _totalSeconds;
-    });
-    _timerScaleController.reverse();
-    widget.onFocusStateChanged?.call(false);
+  Future<void> _saveInterruptedSession(int elapsedSeconds) async {
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-    // Update currentlyFocusing status in Firestore
-    _updateFocusingStatus(false);
+    try {
+      final userDataProvider = UserDataProvider.of(context);
+      if (userDataProvider == null) return;
+
+      final currentUserData = userDataProvider.userData;
+      final elapsedMinutes = (elapsedSeconds / 60).ceil();
+
+      // Update user data with accumulated interrupted time
+      final updatedUserData = currentUserData.copyWith(
+        interruptedFocusMinutes:
+            currentUserData.interruptedFocusMinutes + elapsedMinutes,
+        updatedAt: DateTime.now(),
+      );
+
+      // Save updated user data
+      userDataProvider.updateUserData(updatedUserData);
+
+      debugPrint('✅ Saved interrupted session: $elapsedMinutes minutes');
+    } catch (e) {
+      debugPrint('❌ Error saving interrupted session: $e');
+    }
   }
 
   Future<void> _updateFocusingStatus(bool isFocusing) async {
@@ -1249,6 +1171,387 @@ class _FocusScreenState extends State<FocusScreen>
     );
   }
 
+  Widget _buildWeekHeader() {
+    final userData = UserDataProvider.of(context)?.userData;
+    final dayStreak = userData?.dayStreak ?? 0;
+    final now = DateTime.now();
+    final weekday = now.weekday; // 1 = Monday, 7 = Sunday
+
+    // Get the current week's dates
+    final startOfWeek = now.subtract(Duration(days: weekday - 1));
+    final weekDates = List.generate(
+      7,
+      (index) => startOfWeek.add(Duration(days: index)),
+    );
+
+    // Get screen dimensions for responsive sizing
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    // Responsive sizing calculations
+    final horizontalPadding = screenWidth * 0.05; // 5% of screen width
+    final menuButtonSize = screenWidth * 0.12; // 12% of screen width
+    final streakCounterSize =
+        screenWidth * 0.11; // 11% of screen width (smaller)
+    final spacingBetween = screenWidth * 0.03; // 3% of screen width
+
+    final collapsedHeight = screenHeight * 0.13;
+    final expandedHeight = screenHeight * 0.55;
+    final currentHeight = _isCalendarExpanded
+        ? expandedHeight
+        : collapsedHeight;
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        bottomLeft: Radius.circular(24),
+        bottomRight: Radius.circular(24),
+      ),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          height: currentHeight,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1C1C1C).withValues(alpha: 0.7),
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(24),
+              bottomRight: Radius.circular(24),
+            ),
+            border: const Border(
+              bottom: BorderSide(
+                width: 1,
+                color: Color.fromARGB(20, 255, 255, 255),
+              ),
+            ),
+          ),
+          padding: EdgeInsets.only(
+            left: horizontalPadding,
+            right: horizontalPadding,
+            top: screenHeight * 0.05,
+            bottom: screenHeight * 0.005,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Main row with menu, calendar, and streak
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Menu button on the left
+                  GestureDetector(
+                    onTap: () {
+                      // TODO: Open menu/drawer
+                    },
+                    child: Container(
+                      width: menuButtonSize,
+                      height: menuButtonSize,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF2C2C2E),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.drag_handle,
+                        color: Colors.white,
+                        size: menuButtonSize * 0.45,
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: spacingBetween),
+
+                  // Calendar view (week or month depending on expanded state)
+                  Expanded(
+                    child: _isCalendarExpanded
+                        ? _buildMonthCalendar(now, screenWidth, screenHeight)
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              for (int index = 0; index < 7; index++)
+                                Builder(
+                                  builder: (context) {
+                                    final date = weekDates[index];
+                                    final isToday =
+                                        date.day == now.day &&
+                                        date.month == now.month &&
+                                        date.year == now.year;
+                                    final dayLetter = [
+                                      'M',
+                                      'T',
+                                      'W',
+                                      'T',
+                                      'F',
+                                      'S',
+                                      'S',
+                                    ][index];
+
+                                    final dayCircleSize =
+                                        screenWidth * 0.065;
+                                    final dayFontSize =
+                                        screenWidth * 0.035;
+                                    final letterFontSize =
+                                        screenWidth * 0.035;
+
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          dayLetter,
+                                          style: TextStyle(
+                                            color: isToday
+                                                ? Colors.white
+                                                : const Color(0xFF8E8E93),
+                                            fontSize: letterFontSize,
+                                            fontFamily: 'Inter',
+                                            fontWeight: isToday
+                                                ? FontWeight.w600
+                                                : FontWeight.w400,
+                                          ),
+                                        ),
+                                        SizedBox(height: screenHeight * 0.005),
+                                        Container(
+                                          width: dayCircleSize,
+                                          height: dayCircleSize,
+                                          decoration: BoxDecoration(
+                                            color: isToday
+                                                ? Colors.white
+                                                : Colors.transparent,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              '${date.day}',
+                                              style: TextStyle(
+                                                color: isToday
+                                                    ? Colors.black
+                                                    : const Color(0xFF8E8E93),
+                                                fontSize: dayFontSize,
+                                                fontFamily: 'Inter',
+                                                fontWeight: isToday
+                                                    ? FontWeight.w600
+                                                    : FontWeight.w400,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                            ],
+                          ),
+                  ),
+                  SizedBox(width: spacingBetween),
+
+                  // Streak counter on the right
+                  Container(
+                    width: streakCounterSize,
+                    height: streakCounterSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: const Color(0xFF2C2C2E),
+                        width: screenWidth * 0.005,
+                      ),
+                    ),
+                    child: Stack(
+                      children: [
+                        // Circular progress indicator for streak
+                        Positioned.fill(
+                          child: CircularProgressIndicator(
+                            value:
+                                (dayStreak % 7) /
+                                7, // Show progress through the week
+                            strokeWidth: screenWidth * 0.006,
+                            backgroundColor: const Color(0xFF2C2C2E),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        ),
+                        // Flame icon only
+                        Center(
+                          child: Icon(
+                            Icons.local_fire_department,
+                            color: Colors.white,
+                            size: streakCounterSize * 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              // Month label (shown when expanded)
+              if (_isCalendarExpanded) ...[
+                SizedBox(height: screenHeight * 0.015),
+                Text(
+                  '${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][now.month - 1]} ${now.year}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+
+              // Spacing between row and divider
+              SizedBox(height: screenHeight * 0.01),
+
+              // Horizontal divider line (draggable handle for expanding to month view)
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onVerticalDragEnd: (details) {
+                  // Detect swipe direction based on velocity
+                  if (details.primaryVelocity != null) {
+                    if (details.primaryVelocity! > 0) {
+                      // Dragging down - expand calendar
+                      if (!_isCalendarExpanded) {
+                        setState(() {
+                          _isCalendarExpanded = true;
+                        });
+                      }
+                    } else if (details.primaryVelocity! < 0) {
+                      // Dragging up - collapse calendar
+                      if (_isCalendarExpanded) {
+                        setState(() {
+                          _isCalendarExpanded = false;
+                        });
+                      }
+                    }
+                  }
+                },
+                onTap: () {
+                  // Toggle on tap
+                  setState(() {
+                    _isCalendarExpanded = !_isCalendarExpanded;
+                  });
+                },
+                child: Container(
+                  width: screenWidth * 0.15,
+                  height: screenHeight * 0.04, // Larger hit area
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: screenWidth * 0.15,
+                    height: screenHeight * 0.005,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8E8E93).withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMonthCalendar(
+    DateTime now,
+    double screenWidth,
+    double screenHeight,
+  ) {
+    // Get first day of the month
+    final firstDayOfMonth = DateTime(now.year, now.month, 1);
+    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0);
+
+    // Get the weekday of the first day (1 = Monday, 7 = Sunday)
+    final firstWeekday = firstDayOfMonth.weekday;
+
+    // Calculate total cells needed
+    final daysInMonth = lastDayOfMonth.day;
+    final totalCells = ((firstWeekday - 1 + daysInMonth) / 7).ceil() * 7;
+
+    // Match the week view sizing exactly
+    final dayCircleSize = screenWidth * 0.065;
+    final dayFontSize = screenWidth * 0.035;
+    final letterFontSize = screenWidth * 0.035;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Day of week labels (M, T, W, T, F, S, S)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            for (final dayLetter in ['M', 'T', 'W', 'T', 'F', 'S', 'S'])
+              SizedBox(
+                width: dayCircleSize,
+                child: Text(
+                  dayLetter,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: const Color(0xFF8E8E93),
+                    fontSize: letterFontSize,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        SizedBox(height: screenHeight * 0.005),
+        // Week rows with day numbers
+        for (int weekIndex = 0; weekIndex < (totalCells / 7).ceil(); weekIndex++)
+          Padding(
+            padding: EdgeInsets.only(bottom: screenHeight * 0.01),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                for (int dayIndex = 0; dayIndex < 7; dayIndex++)
+                  Builder(
+                    builder: (context) {
+                      final cellIndex = weekIndex * 7 + dayIndex;
+                      final dayOffset = cellIndex - (firstWeekday - 1);
+
+                      if (dayOffset < 0 || dayOffset >= daysInMonth) {
+                        // Empty cell - maintain spacing
+                        return SizedBox(
+                          width: dayCircleSize,
+                          height: dayCircleSize,
+                        );
+                      }
+
+                      final day = dayOffset + 1;
+                      final date = DateTime(now.year, now.month, day);
+                      final isToday =
+                          date.day == now.day &&
+                          date.month == now.month &&
+                          date.year == now.year;
+
+                      return Container(
+                        width: dayCircleSize,
+                        height: dayCircleSize,
+                        decoration: BoxDecoration(
+                          color: isToday ? Colors.white : Colors.transparent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            '$day',
+                            style: TextStyle(
+                              color: isToday ? Colors.black : const Color(0xFF8E8E93),
+                              fontSize: dayFontSize,
+                              fontFamily: 'Inter',
+                              fontWeight: isToday ? FontWeight.w600 : FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     double progress = _totalSeconds > 0
@@ -1269,96 +1572,6 @@ class _FocusScreenState extends State<FocusScreen>
             decoration: const BoxDecoration(color: Colors.black),
             child: Stack(
               children: [
-                // Top radiant gradient (Dynamic Island area)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  child: ClipRect(
-                    child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-                      child: Container(
-                        height: 250,
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            center: const Alignment(0, -1.2),
-                            radius: 2.0,
-                            colors: [
-                              const Color.fromARGB(
-                                255,
-                                255,
-                                255,
-                                255,
-                              ).withValues(alpha: 0.10),
-                              const Color.fromARGB(
-                                255,
-                                4,
-                                87,
-                                240,
-                              ).withValues(alpha: 0.08),
-                              const Color.fromARGB(
-                                255,
-                                88,
-                                121,
-                                180,
-                              ).withValues(alpha: 0.06),
-                              const Color.fromARGB(
-                                255,
-                                0,
-                                89,
-                                255,
-                              ).withValues(alpha: 0.045),
-                              const Color.fromARGB(
-                                255,
-                                0,
-                                89,
-                                255,
-                              ).withValues(alpha: 0.03),
-                              const Color.fromARGB(
-                                255,
-                                0,
-                                89,
-                                255,
-                              ).withValues(alpha: 0.02),
-                              const Color.fromARGB(
-                                255,
-                                0,
-                                89,
-                                255,
-                              ).withValues(alpha: 0.012),
-                              const Color.fromARGB(
-                                255,
-                                0,
-                                89,
-                                255,
-                              ).withValues(alpha: 0.006),
-                              const Color.fromARGB(
-                                255,
-                                0,
-                                89,
-                                255,
-                              ).withValues(alpha: 0.003),
-                              Colors.transparent,
-                            ],
-                            stops: const [
-                              0.0,
-                              0.15,
-                              0.22,
-                              0.42,
-                              0.55,
-                              0.65,
-                              0.75,
-                              0.8,
-                              0.9,
-                              1.0,
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
                 // Progress circle - Centered lower (drawn first so it's behind interactive elements)
                 Positioned(
                   left: 0,
@@ -1431,7 +1644,7 @@ class _FocusScreenState extends State<FocusScreen>
                     ),
                   ),
 
-                // Pause and Stop buttons container - when running
+                // Stop button - when running
                 if (_isRunning)
                   Positioned(
                     left: 0,
@@ -1439,56 +1652,30 @@ class _FocusScreenState extends State<FocusScreen>
                     top:
                         screenHeight * 0.72, // Adjusted for new circle position
                     child: Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Pause button
-                          GestureDetector(
-                            onTap: _pauseTimer,
-                            child: Container(
-                              width: 60,
-                              height: 55,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1D1D1D),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: const Center(
-                                child: Icon(
-                                  Icons.pause,
-                                  size: 32,
-                                  color: Color(0xFFFFFFFF),
-                                ),
+                      child: GestureDetector(
+                        onTap: _stopTimer,
+                        child: Container(
+                          width: 235,
+                          height: 55,
+                          decoration: ShapeDecoration(
+                            color: const Color(0xFF1D1D1D),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(17),
+                            ),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'I\'ve got distracted',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w400,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 16),
-                          // Stop button
-                          GestureDetector(
-                            onTap: _stopTimer,
-                            child: Container(
-                              width: 185,
-                              height: 55,
-                              decoration: ShapeDecoration(
-                                color: const Color(0xFF1D1D1D),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(17),
-                                ),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'Stop focusing',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 20,
-                                    fontFamily: 'Inter',
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -1563,170 +1750,12 @@ class _FocusScreenState extends State<FocusScreen>
                   ),
                 ),
 
-                // Streak and Calendar Card - Top center
+                // Week/Month header at the top (rendered last so it's on top of all layers)
                 Positioned(
-                  top: 50,
+                  top: 0,
                   left: 0,
                   right: 0,
-                  child: Center(
-                    child: Builder(
-                      builder: (context) {
-                        final userDataProvider = UserDataProvider.of(context);
-                        final userData =
-                            userDataProvider?.userData ??
-                            UserData.newUser(
-                              email: 'guest@example.com',
-                              fullName: 'User',
-                            );
-
-                        // Use cached week days
-                        final weekDays = _weekDays;
-                        final now = DateTime.now();
-
-                        return Container(
-                          width: 248,
-                          height: 65,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 0,
-                            vertical: 0,
-                          ),
-                          decoration: ShapeDecoration(
-                            gradient: const LinearGradient(
-                              begin: Alignment(0.50, -0.00),
-                              end: Alignment(0.50, 1.00),
-                              colors: [Color(0xFF1A1A1A), Color(0xFF121212)],
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(17),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: weekDays.map((day) {
-                              final isToday =
-                                  day.day == now.day &&
-                                  day.month == now.month &&
-                                  day.year == now.year;
-
-                              // Check if this specific day has any completed sessions
-                              final dayNormalized = DateTime(
-                                day.year,
-                                day.month,
-                                day.day,
-                              );
-                              final hasCompletedSession = userData.focusSessions
-                                  .any((session) {
-                                    final sessionDay = DateTime(
-                                      session.start.year,
-                                      session.start.month,
-                                      session.start.day,
-                                    );
-                                    return sessionDay.isAtSameMomentAs(
-                                      dayNormalized,
-                                    );
-                                  });
-
-                              // Show lit flame only for days with completed sessions
-                              final hasStreak = hasCompletedSession;
-
-                              return SizedBox(
-                                width: 30,
-                                child: Center(
-                                  child: Container(
-                                    padding: isToday
-                                        ? const EdgeInsets.symmetric(
-                                            horizontal: 5,
-                                            vertical: 4,
-                                          )
-                                        : null,
-                                    decoration: isToday
-                                        ? ShapeDecoration(
-                                            gradient: const LinearGradient(
-                                              begin: Alignment(0.50, -0.00),
-                                              end: Alignment(0.50, 1.00),
-                                              colors: [
-                                                Color(0x199A9A9A),
-                                                Color(0x19ABABAB),
-                                              ],
-                                            ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                            ),
-                                          )
-                                        : null,
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        // Flame icon
-                                        SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: hasStreak
-                                              ? Image.asset(
-                                                  'assets/images/Icons/streakicon.png',
-                                                  width: 18,
-                                                  height: 18,
-                                                  fit: BoxFit.contain,
-                                                )
-                                              : Image.asset(
-                                                  'assets/images/Icons/streakicongrey.png',
-                                                  width: 18,
-                                                  height: 18,
-                                                  fit: BoxFit.contain,
-                                                ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        // Day name (Mon, Tue, etc.)
-                                        Text(
-                                          [
-                                            'Mon',
-                                            'Tue',
-                                            'Wed',
-                                            'Thu',
-                                            'Fri',
-                                            'Sat',
-                                            'Sun',
-                                          ][day.weekday - 1],
-                                          style: TextStyle(
-                                            color: isToday
-                                                ? Colors.white
-                                                : Colors.white70,
-                                            fontSize: 9,
-                                            fontFamily: 'Inter',
-                                            fontWeight: isToday
-                                                ? FontWeight.w600
-                                                : FontWeight.w400,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 1),
-                                        // Day number
-                                        Text(
-                                          '${day.day}',
-                                          style: TextStyle(
-                                            color: isToday
-                                                ? Colors.white
-                                                : Colors.white70,
-                                            fontSize: 13,
-                                            fontFamily: 'Inter',
-                                            fontWeight: isToday
-                                                ? FontWeight.w600
-                                                : FontWeight.w400,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                  child: _buildWeekHeader(),
                 ),
               ],
             ),
@@ -2656,7 +2685,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => UserProfileScreen(
+                builder: (context) => PublicProfileScreen(
                   userData: userData,
                   userId: friend.userId,
                 ),
@@ -3849,7 +3878,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => UserProfileScreen(
+                  builder: (context) => PublicProfileScreen(
                     userData: userData,
                     userId: member.userId,
                   ),
@@ -4136,16 +4165,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 }
 
 // Profile Screen
-class ProfileScreen extends StatefulWidget {
+/// Private Profile Screen - Shows the current user's own profile
+/// Accessible from the navigation bar
+class PrivateProfileScreen extends StatefulWidget {
   final Function(bool)? onScrollDirectionChanged;
 
-  const ProfileScreen({super.key, this.onScrollDirectionChanged});
+  const PrivateProfileScreen({super.key, this.onScrollDirectionChanged});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  State<PrivateProfileScreen> createState() => _PrivateProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
   int _selectedPeriod = 0; // 0: Week, 1: Month, 2: Year
   int _currentOffset =
       0; // Offset for navigation (0 = current period, 1 = previous period, etc.)
@@ -4391,17 +4422,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2C2C2E),
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppColors.cardBackground,
+                    borderRadius: AppRadius.medium,
                   ),
                   child: Column(
                     children: [
                       Text(
                         '${userData.dayStreak}',
                         style: const TextStyle(
-                          color: Color(0xFFFFD700),
+                          color: AppColors.gold,
                           fontSize: 36,
                           fontFamily: 'Inter',
                           fontWeight: FontWeight.w700,
@@ -4425,17 +4456,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2C2C2E),
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppColors.cardBackground,
+                    borderRadius: AppRadius.medium,
                   ),
                   child: Column(
                     children: [
                       Text(
                         '${userData.focusHours}',
                         style: const TextStyle(
-                          color: Color(0xFFB794F6),
+                          color: AppColors.primaryLight,
                           fontSize: 36,
                           fontFamily: 'Inter',
                           fontWeight: FontWeight.w700,
@@ -4452,6 +4483,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           letterSpacing: 1,
                         ),
                       ),
+                      // Display interrupted time if greater than 0
+                      if (userData.interruptedFocusMinutes > 0) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          '+${(userData.interruptedFocusMinutes / 60).toStringAsFixed(1)}h interrupted',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 9,
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -7799,6 +7843,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Generate random statistics
     final dayStreak = random.nextInt(365) + 1;
     final focusHours = random.nextInt(1950) + 50;
+    final interruptedMinutes =
+        random.nextInt(300) + 20; // 20-320 interrupted minutes
     final rankPercent = random.nextInt(99) + 1;
     final rankPercentage = 'Top $rankPercent%';
 
@@ -7869,6 +7915,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return currentUserData.copyWith(
       dayStreak: dayStreak,
       focusHours: focusHours,
+      interruptedFocusMinutes: interruptedMinutes,
       rankPercentage: rankPercentage,
       currentBadge: 'Radiant',
       currentBadgeProgress: '${dayStreak % 30}/30 days',
@@ -8012,15 +8059,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Random data generated!\n'
-              'Day Streak: ${newUserData.dayStreak}, '
-              'Focus Hours: ${newUserData.focusHours}, '
-              'Projects: $projectCount',
-            ),
-            backgroundColor: const Color(0xFF00C853),
-            duration: const Duration(seconds: 3),
+          const SnackBar(
+            content: Text('✅ Random data generated successfully!'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 2),
           ),
         );
       }
@@ -8289,12 +8331,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      _buildDataRow('Day Streak', '${userData.dayStreak} days'),
                       _buildDataRow(
-                        'Focus Hours',
-                        '${userData.focusHours} hours',
+                        '📊 Day Streak',
+                        '${userData.dayStreak} days',
                       ),
-                      _buildDataRow('Rank', userData.rankPercentage),
+                      _buildDataRow(
+                        '⏱️ Focus Hours',
+                        '${userData.focusHours}h',
+                      ),
+                      _buildDataRow(
+                        '⚠️ Interrupted Time',
+                        '${(userData.interruptedFocusMinutes / 60).toStringAsFixed(1)}h',
+                      ),
+                      _buildDataRow('🎯 Rank', userData.rankPercentage),
+                      _buildDataRow('🏆 Badge', userData.currentBadge),
+                      _buildDataRow(
+                        '📁 Projects',
+                        '${userData.focusSessions.map((s) => s.projectId).toSet().length}',
+                      ),
+                      _buildDataRow(
+                        '📝 Sessions',
+                        '${userData.focusSessions.length}',
+                      ),
                       const SizedBox(height: 12),
                       Container(
                         padding: const EdgeInsets.all(8),

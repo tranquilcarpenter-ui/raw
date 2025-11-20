@@ -78,6 +78,7 @@ flutter:
     - assets/images/Icons/
     - assets/images/achievements/
     - assets/images/RAW/
+    - assets/images/marketing/
     - assets/images/pfpplaceholder.JPG
     - assets/animations/rawlogotest.json
 

@@ -35,7 +35,13 @@
       "Bash(powershell -Command \"(Get-Content ''c:\\Users\\Home\\RAW\\lib\\auth_screen.dart'').Count\")",
       "Bash(powershell:*)",
       "Bash(git config:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(move user_profile_screen.dart public_profile_screen.dart)",
+      "Bash(move \"c:\\Users\\Home\\RAW\\lib\\user_profile_screen.dart\" \"c:\\Users\\Home\\RAW\\lib\\public_profile_screen.dart\")",
+      "Bash(del \"c:\\Users\\Home\\RAW\\lib\\email_input_screen.dart\")",
+      "Bash(adb uninstall:*)",
+      "Bash(dart run:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

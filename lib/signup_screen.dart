@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_service.dart';
 import 'user_data.dart';
 import 'user_data_service.dart';
@@ -9,11 +11,7 @@ import 'project_service.dart';
 /// Constants for signup validation
 class SignupConstants {
   // Password validation
-  static const int passwordMinLength = 8;
-  static final RegExp uppercasePattern = RegExp(r'[A-Z]');
-  static final RegExp lowercasePattern = RegExp(r'[a-z]');
   static final RegExp numberPattern = RegExp(r'[0-9]');
-  static final RegExp specialCharPattern = RegExp(r'[!@#$%^&*(),.?":{}|<>]');
 }
 
 class SignUpScreen extends StatefulWidget {
@@ -33,9 +31,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   // Form controllers
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
-      TextEditingController();
-  final TextEditingController _displayNameController = TextEditingController();
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
   DateTime? _selectedBirthday;
   String? _selectedGender;
@@ -45,12 +42,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _isLoading = false;
   String _errorMessage = '';
   bool _isPasswordVisible = false;
-  bool _isConfirmPasswordVisible = false;
   bool _isEmailValid = false;
 
-  // Total pages: 0=Email/Password, 1=Name/Username, 2=Birthday/Gender, 3-9=Questions (7 total), 10=Signature
+  bool _isCheckingUsername = false;
+  bool _isUsernameAvailable = false;
+  List<String> _usernameSuggestions = [];
+  Timer? _usernameDebounceTimer;
+
+  // Total pages: 0=Email, 1=Password, 2=Name, 3=Username, 4=Birthday/Gender, 5-11=Questions (7 total), 12=Signature
   final int _totalPages =
-      11; // 3 info pages + 7 question pages + 1 signature page
+      13; // 5 info pages + 7 question pages + 1 signature page
 
   // Cache pages to avoid rebuilding on every swipe
   final Map<int, Widget> _cachedPages = {};
@@ -62,11 +63,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
     debugPrint('SignUpScreen: initState called');
     debugPrint('SignUpScreen: initialEmail = ${widget.initialEmail}');
 
-    _emailController.addListener(_validateEmail);
+    _emailController.addListener(_checkEmailValidity);
 
     // Pre-fill email if provided from auth screen
     if (widget.initialEmail != null) {
-      debugPrint('SignUpScreen: Pre-filling email field with: ${widget.initialEmail}');
+      debugPrint(
+        'SignUpScreen: Pre-filling email field with: ${widget.initialEmail}',
+      );
       _emailController.text = widget.initialEmail!;
     }
 
@@ -76,27 +79,54 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   void dispose() {
+    _usernameDebounceTimer?.cancel();
     _pageController.dispose();
     _currentPageNotifier.dispose();
-    _emailController.removeListener(_validateEmail);
+    _emailController.removeListener(_checkEmailValidity);
     _emailController.dispose();
     _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    _displayNameController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _usernameController.dispose();
     super.dispose();
   }
 
-  void _validateEmail() {
+  void _checkEmailValidity() {
     final email = _emailController.text.trim();
-    // Check if email is complete: has @ and ., and has at least 2 chars after the last dot
-    final isValid =
-        email.isNotEmpty &&
+
+    // Don't validate if field is empty (user hasn't started typing yet)
+    if (email.isEmpty) {
+      if (_isEmailValid) {
+        setState(() {
+          _isEmailValid = false;
+        });
+      }
+      return;
+    }
+
+    // Only validate if email appears to be fully written (has @ and . in correct positions)
+    final hasBasicStructure =
         email.contains('@') &&
         email.contains('.') &&
-        email.indexOf('@') < email.lastIndexOf('.') &&
-        email.lastIndexOf('.') < email.length - 1 &&
+        email.indexOf('@') < email.lastIndexOf('.');
+
+    // If email doesn't have basic structure yet, don't mark as valid (user still typing)
+    if (!hasBasicStructure) {
+      if (_isEmailValid) {
+        setState(() {
+          _isEmailValid = false;
+        });
+      }
+      return;
+    }
+
+    // Email has basic structure, now validate it properly
+    final isValid =
+        email.indexOf('@') > 0 && // At least one char before @
+        email.lastIndexOf('.') <
+            email.length - 2 && // At least 2 chars after last dot
         email.substring(email.lastIndexOf('.') + 1).length >= 2;
+
     if (isValid != _isEmailValid) {
       setState(() {
         _isEmailValid = isValid;
@@ -121,19 +151,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-    }
-  }
-
-  String _getPageTitle() {
-    switch (_currentPage) {
-      case 0:
-        return 'General informations';
-      case 1:
-        return 'Tell us about yourself';
-      case 2:
-        return 'A few more details';
-      default:
-        return '';
     }
   }
 
@@ -165,11 +182,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
 
       // Create complete user data in Firestore (profile + default statistics)
+      final firstName = _firstNameController.text.trim();
+      final lastName = _lastNameController.text.trim();
+      final fullName = '$firstName $lastName'.trim();
+
       final userData = UserData.newUser(
         email: _emailController.text.trim(),
-        fullName: _displayNameController.text.trim().isEmpty
-            ? 'User'
-            : _displayNameController.text.trim(),
+        fullName: fullName.isEmpty ? 'User' : fullName,
         username: _usernameController.text.trim().isEmpty
             ? null
             : _usernameController.text.trim(),
@@ -179,22 +198,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
 
       // For new users, use set (overwrite) instead of merge to ensure clean data
-      await UserDataService.instance.saveUserData(user.uid, userData, merge: false);
+      await UserDataService.instance.saveUserData(
+        user.uid,
+        userData,
+        merge: false,
+      );
 
       // Initialize default "Unset" project for the new user
       await ProjectService.instance.initializeDefaultProject(user.uid);
 
-      // Success - auth state listener will handle navigation
+      debugPrint('✅ Signup complete, popping back to let auth state update home...');
+
+      // The StreamBuilder in RAWAppWrapper will now show RAWApp (with MainScreen)
+      // Pop back to OnboardingScreen, which will be replaced by RAWApp automatically
       if (mounted) {
-        Navigator.of(
-          context,
-        ).pop(); // Go back to auth screen, which will redirect to main
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
         _isLoading = false;
         if (e.code == 'weak-password') {
-          _errorMessage = 'Password is too weak. Use at least 6 characters with letters and numbers';
+          _errorMessage =
+              'Password is too weak. Use at least 6 characters with letters and numbers';
         } else if (e.code == 'email-already-in-use') {
           _errorMessage = 'An account already exists with this email';
         } else if (e.code == 'invalid-email') {
@@ -213,7 +238,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('SignUpScreen: build() called - currentPage = $_currentPage, isLoading = $_isLoading');
+    debugPrint(
+      'SignUpScreen: build() called - currentPage = $_currentPage, isLoading = $_isLoading',
+    );
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       resizeToAvoidBottomInset: true,
@@ -233,7 +260,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: IconButton(
-                          icon: const Icon(Icons.arrow_back, color: Colors.white),
+                          icon: const Icon(
+                            Icons.arrow_back,
+                            color: Colors.white,
+                          ),
                           onPressed: _isLoading
                               ? null
                               : () {
@@ -245,42 +275,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 },
                         ),
                       ),
-                      // Centered title or progress indicator
-                      if (currentPage >= 3)
-                        // Progress indicator for question pages
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: List.generate(_totalPages - 3, (index) {
-                            final questionPage = index + 3;
-                            final isActive = questionPage == currentPage;
-                            return Padding(
-                              padding: EdgeInsets.only(
-                                right: index < (_totalPages - 4) ? 4 : 0,
+                      // Progress indicator for all pages
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(_totalPages, (index) {
+                          final isActive = index == currentPage;
+                          return Padding(
+                            padding: EdgeInsets.only(
+                              right: index < (_totalPages - 1) ? 4 : 0,
+                            ),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                              width: isActive ? 32 : 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF3A3A3C),
+                                borderRadius: BorderRadius.circular(4),
                               ),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeInOut,
-                                width: isActive ? 32 : 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF3A3A3C),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ),
-                            );
-                          }),
-                        )
-                      else
-                        // Page title for info pages
-                        Text(
-                          _getPageTitle(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                            ),
+                          );
+                        }),
+                      ),
                     ],
                   ),
                 );
@@ -302,8 +319,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 },
                 physics: const NeverScrollableScrollPhysics(),
                 itemBuilder: (context, index) {
-                  // Don't cache pages with interactive state (birthday picker, signature)
-                  final shouldCache = index != 2 && index != 10;
+                  // Don't cache pages with interactive state (username suggestions, birthday picker, signature)
+                  final shouldCache = index != 3 && index != 4 && index != 12;
 
                   // Use cached pages to avoid rebuilding static pages
                   if (shouldCache && _cachedPages.containsKey(index)) {
@@ -316,21 +333,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       page = _buildEmailPasswordPage();
                       break;
                     case 1:
-                      page = _buildNameUsernamePage();
+                      page = _buildPasswordPage();
                       break;
                     case 2:
-                      page = _buildBirthdayGenderPage();
+                      page = _buildNamePage();
                       break;
                     case 3:
+                      page = _buildUsernamePage();
+                      break;
                     case 4:
+                      page = _buildBirthdayGenderPage();
+                      break;
                     case 5:
                     case 6:
                     case 7:
                     case 8:
                     case 9:
-                      page = _buildQuestionPage(index - 2);
-                      break;
                     case 10:
+                    case 11:
+                      page = _buildQuestionPage(index - 4);
+                      break;
+                    case 12:
                       page = _buildSignaturePage();
                       break;
                     default:
@@ -388,31 +411,67 @@ class _SignUpScreenState extends State<SignUpScreen> {
               valueListenable: _currentPageNotifier,
               builder: (context, currentPage, child) {
                 // Show Continue button on info pages and signature page
-                if (currentPage < 3 || currentPage == _totalPages - 1) {
+                if (currentPage < 5 || currentPage == _totalPages - 1) {
                   return Padding(
                     padding: const EdgeInsets.all(24),
                     child: SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _isLoading
+                        onPressed:
+                            (currentPage == 0 && !_isEmailValid) ||
+                                (currentPage == 3 &&
+                                    (!_isUsernameAvailable ||
+                                        _usernameController.text.isEmpty)) ||
+                                _isLoading
                             ? null
                             : () {
                                 if (currentPage == 0) {
-                                  _validateEmailPassword();
+                                  _validateEmail();
                                 } else if (currentPage == 1) {
-                                  _validateNameUsername();
+                                  _validatePassword();
                                 } else if (currentPage == 2) {
+                                  _validateName();
+                                } else if (currentPage == 3) {
+                                  _validateUsername();
+                                } else if (currentPage == 4) {
                                   _validateBirthdayGender();
                                 } else {
-                                  // Signature page (page 10), create account
+                                  // Signature page (page 12), create account
                                   _validateSignatureAndCreateAccount();
                                 }
                               },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+                          backgroundColor:
+                              (currentPage == 0 && _isEmailValid) ||
+                                  (currentPage == 3 &&
+                                      _isUsernameAvailable &&
+                                      _usernameController.text.isNotEmpty)
+                              ? Colors.white
+                              : (currentPage == 0 || currentPage == 3)
+                              ? const Color(0xFF3A3A3C)
+                              : const Color.fromARGB(255, 255, 255, 255),
+                          foregroundColor:
+                              (currentPage == 0 && _isEmailValid) ||
+                                  (currentPage == 3 &&
+                                      _isUsernameAvailable &&
+                                      _usernameController.text.isNotEmpty)
+                              ? Colors.black
+                              : (currentPage == 0 || currentPage == 3)
+                              ? const Color(0xFF8E8E93)
+                              : Colors.black,
+                          disabledBackgroundColor:
+                              (currentPage == 0 || currentPage == 3)
+                              ? const Color(0xFF3A3A3C)
+                              : null,
+                          disabledForegroundColor:
+                              (currentPage == 0 || currentPage == 3)
+                              ? const Color(0xFF8E8E93)
+                              : null,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(
+                              currentPage == 0 ? 27 : 12,
+                            ),
                           ),
                         ),
                         child: _isLoading
@@ -423,6 +482,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   color: Colors.white,
                                   strokeWidth: 2,
                                 ),
+                              )
+                            : currentPage == 0
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Text(
+                                    'Continue',
+                                    style: TextStyle(
+                                      color: Color.fromARGB(255, 0, 0, 0),
+                                      fontSize: 17,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Icon(
+                                    Icons.arrow_forward,
+                                    size: 20,
+                                    color: Color.fromARGB(255, 0, 0, 0),
+                                  ),
+                                ],
                               )
                             : Text(
                                 currentPage == _totalPages - 1
@@ -438,8 +518,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                   );
                 }
-                // Show "Skip for now" on question pages (3-9)
-                else if (currentPage >= 3 && currentPage < _totalPages - 1) {
+                // Show "Skip for now" on question pages (4-10)
+                else if (currentPage >= 4 && currentPage < _totalPages - 1) {
                   return Padding(
                     padding: const EdgeInsets.all(24),
                     child: Center(
@@ -469,7 +549,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  void _validateEmailPassword() {
+  void _validateEmail() {
     setState(() => _errorMessage = '');
 
     if (_emailController.text.trim().isEmpty) {
@@ -481,6 +561,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
       setState(() => _errorMessage = 'Please enter a valid email address');
       return;
     }
+
+    _nextPage();
+  }
+
+  void _validatePassword() {
+    setState(() => _errorMessage = '');
 
     if (_passwordController.text.isEmpty) {
       setState(() => _errorMessage = 'Please enter a password');
@@ -498,43 +584,173 @@ class _SignUpScreenState extends State<SignUpScreen> {
     // Check for at least one letter (uppercase or lowercase)
     final hasLetter = RegExp(r'[a-zA-Z]').hasMatch(password);
     if (!hasLetter) {
-      setState(() => _errorMessage = 'Password must contain at least one letter');
+      setState(
+        () => _errorMessage = 'Password must contain at least one letter',
+      );
       return;
     }
 
     // Check for at least one number
     if (!password.contains(SignupConstants.numberPattern)) {
-      setState(() => _errorMessage = 'Password must contain at least one number');
-      return;
-    }
-
-    if (_confirmPasswordController.text.isEmpty) {
-      setState(() => _errorMessage = 'Please confirm your password');
-      return;
-    }
-
-    if (password != _confirmPasswordController.text) {
-      setState(() => _errorMessage = 'Passwords do not match');
+      setState(
+        () => _errorMessage = 'Password must contain at least one number',
+      );
       return;
     }
 
     _nextPage();
   }
 
-  void _validateNameUsername() {
+  void _validateName() {
     setState(() => _errorMessage = '');
 
-    if (_displayNameController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Please enter your display name');
+    if (_firstNameController.text.trim().isEmpty) {
+      setState(() => _errorMessage = 'Please enter your first name');
       return;
     }
+
+    if (_lastNameController.text.trim().isEmpty) {
+      setState(() => _errorMessage = 'Please enter your last name');
+      return;
+    }
+
+    // Generate username suggestions before moving to next page
+    _generateUsernameSuggestions();
+    _nextPage();
+  }
+
+  void _validateUsername() {
+    setState(() => _errorMessage = '');
 
     if (_usernameController.text.trim().isEmpty) {
       setState(() => _errorMessage = 'Please enter a username');
       return;
     }
 
+    if (!_isUsernameAvailable) {
+      setState(() => _errorMessage = 'This username is already taken');
+      return;
+    }
+
     _nextPage();
+  }
+
+  Future<void> _checkUsernameAvailability() async {
+    final username = _usernameController.text.trim().toLowerCase();
+
+    debugPrint(
+      'USERNAME CHECK: Checking username availability for: "$username"',
+    );
+
+    if (username.isEmpty) {
+      debugPrint('USERNAME CHECK: Username is empty');
+      setState(() {
+        _isCheckingUsername = false;
+        _isUsernameAvailable = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isCheckingUsername = true;
+      _isUsernameAvailable = false;
+    });
+
+    debugPrint('USERNAME CHECK: Starting Firestore query...');
+
+    try {
+      // Check if username exists in Firestore
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('username', isEqualTo: username)
+          .limit(1)
+          .get();
+
+      debugPrint(
+        'USERNAME CHECK: Query completed. Docs found: ${querySnapshot.docs.length}',
+      );
+      final isAvailable = querySnapshot.docs.isEmpty;
+      debugPrint(
+        'USERNAME CHECK: Username "$username" is available: $isAvailable',
+      );
+
+      setState(() {
+        _isCheckingUsername = false;
+        _isUsernameAvailable = isAvailable;
+      });
+    } catch (e) {
+      debugPrint('USERNAME CHECK: Error checking username: $e');
+      // In development/emulator mode, assume username is available on error
+      setState(() {
+        _isCheckingUsername = false;
+        _isUsernameAvailable = true; // Assume available in dev mode
+      });
+      debugPrint('USERNAME CHECK: Defaulting to available=true (dev mode)');
+    }
+  }
+
+  Future<void> _generateUsernameSuggestions() async {
+    debugPrint('USERNAME SUGGESTIONS: Generating suggestions...');
+    final firstName = _firstNameController.text.trim().toLowerCase();
+    final lastName = _lastNameController.text.trim().toLowerCase();
+    debugPrint(
+      'USERNAME SUGGESTIONS: firstName="$firstName", lastName="$lastName"',
+    );
+
+    final candidates = <String>[];
+    final random1 = DateTime.now().millisecondsSinceEpoch % 1000;
+    final random2 = (DateTime.now().millisecondsSinceEpoch % 9999);
+    final random3 = (DateTime.now().millisecondsSinceEpoch % 99);
+
+    // Generate many username candidates
+    if (firstName.isNotEmpty && lastName.isNotEmpty) {
+      candidates.add('$firstName$lastName');
+      candidates.add('${firstName}_$lastName');
+      candidates.add('$firstName.$lastName');
+      candidates.add('$firstName$random1');
+      candidates.add('$firstName$random2');
+      candidates.add('$lastName$firstName');
+      candidates.add('$firstName${lastName[0]}');
+      candidates.add('${firstName}_$random3');
+    }
+
+    debugPrint(
+      'USERNAME SUGGESTIONS: Generated ${candidates.length} candidates, checking availability...',
+    );
+
+    // Check each candidate and keep the first 3 available ones
+    final availableSuggestions = <String>[];
+
+    for (final candidate in candidates) {
+      if (availableSuggestions.length >= 3) break;
+
+      try {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where('username', isEqualTo: candidate)
+            .limit(1)
+            .get();
+
+        final isAvailable = querySnapshot.docs.isEmpty;
+        debugPrint(
+          'USERNAME SUGGESTIONS: "$candidate" available: $isAvailable',
+        );
+
+        if (isAvailable) {
+          availableSuggestions.add(candidate);
+        }
+      } catch (e) {
+        debugPrint('USERNAME SUGGESTIONS: Error checking "$candidate": $e');
+        // In dev mode, assume available on error
+        availableSuggestions.add(candidate);
+        if (availableSuggestions.length >= 3) break;
+      }
+    }
+
+    debugPrint(
+      'USERNAME SUGGESTIONS: Found ${availableSuggestions.length} available suggestions',
+    );
+    setState(() => _usernameSuggestions = availableSuggestions);
   }
 
   void _validateBirthdayGender() {
@@ -554,34 +770,46 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Widget _buildEmailPasswordPage() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Email label
+          const Spacer(),
+
+          // Title
           const Text(
-            'Email',
+            "What's your email?",
             style: TextStyle(
               color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+              fontSize: 26,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
             ),
+            textAlign: TextAlign.center,
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 32),
 
-          // Email field with validation checkmark
+          // Email input field
           TextField(
             controller: _emailController,
-            autofocus: false,
             keyboardType: TextInputType.emailAddress,
-            textInputAction: TextInputAction.next,
-            style: const TextStyle(color: Colors.white, fontSize: 16),
+            autofocus: true,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w400,
+            ),
             decoration: InputDecoration(
-              hintText: 'john@example.com',
-              hintStyle: const TextStyle(color: Color(0xFF8E8E93)),
+              hintText: 'Email address',
+              hintStyle: const TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 17,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
               filled: true,
               fillColor: const Color(0xFF2C2C2E),
               border: OutlineInputBorder(
@@ -589,39 +817,147 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 borderSide: BorderSide.none,
               ),
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
+                horizontal: 20,
                 vertical: 16,
               ),
-              suffixIcon: _isEmailValid
-                  ? const Icon(Icons.check, color: Color(0xFF34C759), size: 24)
-                  : null,
             ),
+          ),
+
+          const SizedBox(height: 32),
+
+          // Divider with "Or"
+          Row(
+            children: const [
+              Expanded(child: Divider(color: Color(0xFF3A3A3C), thickness: 1)),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'Or',
+                  style: TextStyle(
+                    color: Color(0xFF8E8E93),
+                    fontSize: 14,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ),
+              Expanded(child: Divider(color: Color(0xFF3A3A3C), thickness: 1)),
+            ],
           ),
 
           const SizedBox(height: 24),
 
-          // Password label
-          const Text(
-            'Password',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
+          // Apple and Google buttons
+          Row(
+            children: [
+              // Apple button
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      // TODO: Implement Apple Sign-In (email only)
+                      // Skip password page and go to name/username page (page 2)
+                      _pageController.jumpToPage(2);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2C2C2E),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Icon(
+                      Icons.apple,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              // Google button
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      // TODO: Implement Google Sign-In (email only)
+                      // Skip password page and go to name/username page (page 2)
+                      _pageController.jumpToPage(2);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2C2C2E),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'G',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
 
-          const SizedBox(height: 8),
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPasswordPage() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Spacer(),
+
+          // Title
+          const Text(
+            "Create a password",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+
+          const SizedBox(height: 32),
 
           // Password field with visibility toggle
           TextField(
             controller: _passwordController,
             obscureText: !_isPasswordVisible,
             obscuringCharacter: '*',
-            textInputAction: TextInputAction.next,
-            style: const TextStyle(color: Colors.white, fontSize: 16),
+            autofocus: true,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w400,
+            ),
             decoration: InputDecoration(
-              hintText: '******',
-              hintStyle: const TextStyle(color: Color(0xFF8E8E93)),
+              hintText: 'Password',
+              hintStyle: const TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 17,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
               filled: true,
               fillColor: const Color(0xFF2C2C2E),
               border: OutlineInputBorder(
@@ -629,7 +965,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 borderSide: BorderSide.none,
               ),
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
+                horizontal: 20,
                 vertical: 16,
               ),
               suffixIcon: IconButton(
@@ -649,88 +985,54 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
           ),
 
-          const SizedBox(height: 24),
-
-          // Confirm Password label
-          const Text(
-            'Confirm Password',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Confirm Password field with visibility toggle
-          TextField(
-            controller: _confirmPasswordController,
-            obscureText: !_isConfirmPasswordVisible,
-            obscuringCharacter: '*',
-            textInputAction: TextInputAction.done,
-            style: const TextStyle(color: Colors.white, fontSize: 16),
-            decoration: InputDecoration(
-              hintText: '******',
-              hintStyle: const TextStyle(color: Color(0xFF8E8E93)),
-              filled: true,
-              fillColor: const Color(0xFF2C2C2E),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
-              ),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _isConfirmPasswordVisible
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  color: const Color(0xFF8E8E93),
-                  size: 24,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
-                  });
-                },
-              ),
-            ),
-          ),
+          const Spacer(),
         ],
       ),
     );
   }
 
-  Widget _buildNameUsernamePage() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+  Widget _buildNamePage() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          const Spacer(),
+
+          // Title
           const Text(
-            'Display Name',
+            "What's your name?",
             style: TextStyle(
               color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+              fontSize: 26,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
             ),
+            textAlign: TextAlign.center,
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 32),
 
+          // First Name field
           TextField(
-            controller: _displayNameController,
-            autofocus: false,
+            controller: _firstNameController,
+            autofocus: true,
             textCapitalization: TextCapitalization.words,
             textInputAction: TextInputAction.next,
-            style: const TextStyle(color: Colors.white, fontSize: 16),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w400,
+            ),
             decoration: InputDecoration(
-              hintText: 'John Doe',
-              hintStyle: const TextStyle(color: Color(0xFF8E8E93)),
+              hintText: 'First name',
+              hintStyle: const TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 17,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
               filled: true,
               fillColor: const Color(0xFF2C2C2E),
               border: OutlineInputBorder(
@@ -738,32 +1040,112 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 borderSide: BorderSide.none,
               ),
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
+                horizontal: 20,
                 vertical: 16,
               ),
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
+          // Last Name field
+          TextField(
+            controller: _lastNameController,
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.done,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w400,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Last name',
+              hintStyle: const TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 17,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
+              filled: true,
+              fillColor: const Color(0xFF2C2C2E),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 16,
+              ),
+            ),
+          ),
+
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsernamePage() {
+    debugPrint(
+      'USERNAME PAGE: Building with ${_usernameSuggestions.length} suggestions',
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Spacer(),
+
+          // Title
           const Text(
-            'Username',
+            "Pick a username",
             style: TextStyle(
               color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+              fontSize: 26,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
             ),
+            textAlign: TextAlign.center,
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 32),
 
+          // Username field with availability check
           TextField(
             controller: _usernameController,
+            autofocus: true,
             textInputAction: TextInputAction.done,
-            style: const TextStyle(color: Colors.white, fontSize: 16),
+            onChanged: (value) {
+              // Cancel previous timer
+              _usernameDebounceTimer?.cancel();
+
+              // Start new timer
+              _usernameDebounceTimer = Timer(
+                const Duration(milliseconds: 500),
+                () {
+                  debugPrint(
+                    'USERNAME CHECK: Debounce timer fired for: "$value"',
+                  );
+                  _checkUsernameAvailability();
+                },
+              );
+            },
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w400,
+            ),
             decoration: InputDecoration(
-              hintText: 'johndoe',
-              hintStyle: const TextStyle(color: Color(0xFF8E8E93)),
+              hintText: 'Username',
+              hintStyle: const TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 17,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w400,
+              ),
               filled: true,
               fillColor: const Color(0xFF2C2C2E),
               border: OutlineInputBorder(
@@ -771,11 +1153,84 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 borderSide: BorderSide.none,
               ),
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
+                horizontal: 20,
                 vertical: 16,
               ),
+              suffixIcon: _isCheckingUsername
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF8E8E93),
+                          ),
+                        ),
+                      ),
+                    )
+                  : _usernameController.text.isNotEmpty && _isUsernameAvailable
+                  ? const Icon(
+                      Icons.check_circle,
+                      color: Color(0xFF34C759),
+                      size: 24,
+                    )
+                  : null,
             ),
           ),
+
+          const SizedBox(height: 12),
+
+          // Username suggestions - always visible
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _usernameSuggestions.isEmpty
+                ? const Text(
+                    'Generating suggestions...',
+                    style: TextStyle(
+                      color: Color(0xFF8E8E93),
+                      fontSize: 12,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w400,
+                    ),
+                  )
+                : Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _usernameSuggestions.map((suggestion) {
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _usernameController.text = suggestion;
+                          });
+                          _checkUsernameAvailability();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2C2C2E),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            suggestion,
+                            style: const TextStyle(
+                              color: Color(0xFF8E8E93),
+                              fontSize: 12,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+          ),
+
+          const Spacer(),
         ],
       ),
     );
@@ -925,13 +1380,33 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
           const SizedBox(height: 32),
           // Answer option buttons
-          _buildAnswerButton('Option A', 'option_a', questionKey, currentAnswer),
+          _buildAnswerButton(
+            'Option A',
+            'option_a',
+            questionKey,
+            currentAnswer,
+          ),
           const SizedBox(height: 12),
-          _buildAnswerButton('Option B', 'option_b', questionKey, currentAnswer),
+          _buildAnswerButton(
+            'Option B',
+            'option_b',
+            questionKey,
+            currentAnswer,
+          ),
           const SizedBox(height: 12),
-          _buildAnswerButton('Option C', 'option_c', questionKey, currentAnswer),
+          _buildAnswerButton(
+            'Option C',
+            'option_c',
+            questionKey,
+            currentAnswer,
+          ),
           const SizedBox(height: 12),
-          _buildAnswerButton('Option D', 'option_d', questionKey, currentAnswer),
+          _buildAnswerButton(
+            'Option D',
+            'option_d',
+            questionKey,
+            currentAnswer,
+          ),
         ],
       ),
     );
@@ -974,10 +1449,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ),
         child: Text(
           text,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
         ),
       ),
     );

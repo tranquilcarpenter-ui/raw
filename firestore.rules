@@ -30,6 +30,14 @@ service cloud.firestore {
       match /projects/{projectId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      // User's achievements subcollection
+      // Allow anyone (authenticated) to read achievements (for viewing other users' profiles)
+      // But only the owner can write/update/delete their achievements
+      match /achievements/{achievementId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // Friends/social features

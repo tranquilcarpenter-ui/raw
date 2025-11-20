@@ -11,23 +11,23 @@ import 'achievements_screen.dart';
 import 'main.dart'; // For AppCard widget
 import 'project_service.dart';
 
-/// User Profile Screen - Shows individual user's profile and statistics
-/// Matches the design of the own profile page
-class UserProfileScreen extends StatefulWidget {
+/// Public Profile Screen - Shows other users' profiles and statistics
+/// Used when viewing another user's profile from friends list or groups
+class PublicProfileScreen extends StatefulWidget {
   final UserData userData;
   final String userId;
 
-  const UserProfileScreen({
+  const PublicProfileScreen({
     super.key,
     required this.userData,
     required this.userId,
   });
 
   @override
-  State<UserProfileScreen> createState() => _UserProfileScreenState();
+  State<PublicProfileScreen> createState() => _PublicProfileScreenState();
 }
 
-class _UserProfileScreenState extends State<UserProfileScreen> {
+class _PublicProfileScreenState extends State<PublicProfileScreen> {
   bool _isFriend = false;
   bool _isLoadingFriendStatus = true;
   int _friendsCount = 0;
@@ -707,7 +707,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                 Text(
                                   '${widget.userData.dayStreak}',
                                   style: const TextStyle(
-                                    color: Color(0xFFFFD700),
+                                    color: AppColors.gold,
                                     fontSize: 48,
                                     fontFamily: 'Inter',
                                     fontWeight: FontWeight.w700,
@@ -741,7 +741,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                 Text(
                                   '${widget.userData.focusHours}',
                                   style: const TextStyle(
-                                    color: Color(0xFFB794F6),
+                                    color: AppColors.primaryLight,
                                     fontSize: 48,
                                     fontFamily: 'Inter',
                                     fontWeight: FontWeight.w700,
@@ -758,6 +758,19 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                     letterSpacing: 1,
                                   ),
                                 ),
+                                // Display interrupted time if greater than 0
+                                if (widget.userData.interruptedFocusMinutes > 0) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '+${(widget.userData.interruptedFocusMinutes / 60).toStringAsFixed(1)}h interrupted',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade500,
+                                      fontSize: 11,
+                                      fontFamily: 'Inter',
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),

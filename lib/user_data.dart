@@ -68,6 +68,7 @@ class UserData {
   // Statistics fields
   int dayStreak;
   int focusHours;
+  int interruptedFocusMinutes; // Cumulative interrupted session time in minutes
   String rankPercentage;
   String currentBadge;
   String currentBadgeProgress;
@@ -97,6 +98,7 @@ class UserData {
     // Statistics
     required this.dayStreak,
     required this.focusHours,
+    this.interruptedFocusMinutes = 0,
     required this.rankPercentage,
     required this.currentBadge,
     required this.currentBadgeProgress,
@@ -150,6 +152,7 @@ class UserData {
       // Statistics (all zeros/defaults)
       dayStreak: 0,
       focusHours: 0,
+      interruptedFocusMinutes: 0,
       rankPercentage: 'N/A',
       currentBadge: 'None',
       currentBadgeProgress: '0/30 days',
@@ -247,6 +250,7 @@ class UserData {
     return copyWith(
       dayStreak: dayStreak,
       focusHours: focusHours,
+      interruptedFocusMinutes: 0, // Reset interrupted minutes with random data
       rankPercentage: rankPercentage,
       currentBadge: 'Radiant',
       currentBadgeProgress: '${dayStreak % 30}/30 days',
@@ -285,6 +289,7 @@ class UserData {
     return copyWith(
       dayStreak: 0,
       focusHours: 0,
+      interruptedFocusMinutes: 0,
       rankPercentage: 'N/A',
       currentBadge: 'None',
       currentBadgeProgress: '0/30 days',
@@ -399,6 +404,7 @@ class UserData {
       // Statistics
       'dayStreak': dayStreak,
       'focusHours': focusHours,
+      'interruptedFocusMinutes': interruptedFocusMinutes,
       'rankPercentage': rankPercentage,
       'currentBadge': currentBadge,
       'currentBadgeProgress': currentBadgeProgress,
@@ -473,6 +479,7 @@ class UserData {
       // Statistics
       dayStreak: json['dayStreak'] as int? ?? 0,
       focusHours: json['focusHours'] as int? ?? 0,
+      interruptedFocusMinutes: json['interruptedFocusMinutes'] as int? ?? 0,
       rankPercentage: json['rankPercentage'] as String? ?? 'N/A',
       currentBadge: json['currentBadge'] as String? ?? 'None',
       currentBadgeProgress: json['currentBadgeProgress'] as String? ?? '0/30 days',
@@ -505,6 +512,7 @@ class UserData {
     Map<String, String>? questionAnswers,
     int? dayStreak,
     int? focusHours,
+    int? interruptedFocusMinutes,
     String? rankPercentage,
     String? currentBadge,
     String? currentBadgeProgress,
@@ -532,6 +540,7 @@ class UserData {
       questionAnswers: questionAnswers ?? this.questionAnswers,
       dayStreak: dayStreak ?? this.dayStreak,
       focusHours: focusHours ?? this.focusHours,
+      interruptedFocusMinutes: interruptedFocusMinutes ?? this.interruptedFocusMinutes,
       rankPercentage: rankPercentage ?? this.rankPercentage,
       currentBadge: currentBadge ?? this.currentBadge,
       currentBadgeProgress: currentBadgeProgress ?? this.currentBadgeProgress,

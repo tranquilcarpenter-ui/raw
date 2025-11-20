@@ -62,9 +62,12 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      // Success - auth state listener will handle navigation
+      debugPrint('✅ Login complete, popping back to let auth state update home...');
+
+      // The StreamBuilder in RAWAppWrapper will now show RAWApp (with MainScreen)
+      // Pop back to OnboardingScreen, which will be replaced by RAWApp automatically
       if (mounted) {
-        Navigator.of(context).pop(); // Go back to auth screen, which will redirect to main
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
